@@ -57,32 +57,39 @@ class KickClip(commands.Cog):
         return self.browser
 
     async def _api_ile_clip(self, channel_name):
-        try:
-            import urllib.request
-            api_url = f"https://kick.com/api/v2/channels/{channel_name}/clips?page=1&per_page=1"
-            req = urllib.request.Request(api_url, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Accept": "application/json",
-                "Origin": "https://kick.com",
-                "Referer": "https://kick.com/"
-            })
-            loop = asyncio.get_event_loop()
-            resp = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=15))
-            body = await loop.run_in_executor(None, resp.read)
-            data = json.loads(body.decode("utf-8"))
-            clips = data.get("clips", [])
-            if clips and len(clips) > 0:
-                c = clips[0]
-                clip_id = str(c.get("id", ""))
-                return {
-                    "id": clip_id,
-                    "title": c.get("title") or c.get("slug") or c.get("description") or "",
-                    "url": f"https://kick.com/{channel_name}/clips/{clip_id}",
-                    "thumbnail": c.get("thumbnail_url") or c.get("thumb_url") or ""
-                }
-            return None
-        except:
-            return None
+        import urllib.request
+        api_endpoints = [
+            f"https://kick.com/api/v2/channels/{channel_name}/clips?page=1&per_page=1",
+            f"https://kick.com/api/v1/channels/{channel_name}/clips?sort=created_at&limit=1",
+        ]
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Origin": "https://kick.com",
+            "Referer": "https://kick.com/"
+        }
+        for api_url in api_endpoints:
+            try:
+                loop = asyncio.get_event_loop()
+                resp = await loop.run_in_executor(None, lambda u=api_url: urllib.request.urlopen(urllib.request.Request(u, headers=headers), timeout=10))
+                body = await loop.run_in_executor(None, resp.read)
+                data = json.loads(body.decode("utf-8"))
+                clips = data.get("clips", []) or data.get("data", [])
+                if clips and len(clips) > 0:
+                    c = clips[0]
+                    clip_id = str(c.get("id", ""))
+                    if not clip_id:
+                        continue
+                    return {
+                        "id": clip_id,
+                        "title": c.get("title") or c.get("slug") or c.get("name") or "",
+                        "url": f"https://kick.com/{channel_name}/clips/{clip_id}",
+                        "thumbnail": c.get("thumbnail_url") or c.get("thumb_url") or c.get("thumbnail", {}).get("url", "") if isinstance(c.get("thumbnail"), dict) else c.get("thumbnail", "")
+                    }
+            except Exception as e:
+                print(f"[KICK API] {channel_name} api hatasi ({api_url}): {e}")
+                continue
+        return None
 
     async def _son_clip(self, channel_name):
         api_result = await self._api_ile_clip(channel_name)
@@ -149,24 +156,26 @@ class KickClip(commands.Cog):
         except:
             return None
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(minutes=2)
     async def check_clips(self):
         all_data = self._get_all()
         for gid_str, settings in all_data.items():
+            guild = self.bot.get_guild(int(gid_str))
+            if not guild:
+                continue
             for k in settings.get("kanallar", []):
                 try:
                     son = await self._son_clip(k["kick_kanal"])
-                    if not son:
+                    if not son or not son.get("id"):
+                        print(f"[KICK] {k['kick_kanal']} icin clip bulunamadi")
                         continue
                     if son["id"] == k.get("son_id"):
                         continue
                     k["son_id"] = son["id"]
                     self._save_all(all_data)
-                    guild = self.bot.get_guild(int(gid_str))
-                    if not guild:
-                        continue
                     kanal = guild.get_channel(int(k["kanal_id"]))
                     if not kanal:
+                        print(f"[KICK] Kanal bulunamadi: {k['kanal_id']} (guild: {guild.name})")
                         continue
                     embed = discord.Embed(
                         title=son.get("title") or f"Yeni Klip — {k['kick_kanal']}",
@@ -177,11 +186,12 @@ class KickClip(commands.Cog):
                     if son.get("thumbnail"):
                         embed.set_image(url=son["thumbnail"])
                     embed.add_field(name="Kanal", value=k['kick_kanal'], inline=True)
-                    embed.add_field(name="Link", value=son["url"], inline=False)
+                    embed.add_field(name="Link", value=f"[İzlemek için tıkla]({son['url']})", inline=False)
                     mesaj = k.get("mesaj", "@everyone")
                     await kanal.send(content=mesaj, embed=embed)
-                except:
-                    pass
+                    print(f"[KICK] {k['kick_kanal']} yeni klip gonderildi -> #{kanal.name} ({guild.name})")
+                except Exception as e:
+                    print(f"[KICK] {k.get('kick_kanal', '?')} islenirken hata: {e}")
 
     @check_clips.before_loop
     async def before_check(self):

@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import json
 import os
 
@@ -119,6 +120,63 @@ class OzelKomut(commands.Cog):
             self._komut_cache = _load()
             self._cache_time = now
         return self._komut_cache
+
+    @app_commands.command(name="komutekle", description="Sunucuya özel bir komut ekle")
+    @app_commands.describe(komut_ismi="Komutun adı (! ile başlamalı, örn: !merhaba)", cevap="Komut yazıldığında botun vereceği yanıt")
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(administrator=True)
+    async def komut_ekle(self, interaction: discord.Interaction, komut_ismi: str, cevap: str):
+        ad = komut_ismi.strip().lower()
+        if not ad.startswith("!"):
+            ad = "!" + ad
+        data = _load()
+        gid = str(interaction.guild.id)
+        if gid not in data:
+            data[gid] = {}
+        if ad in data[gid]:
+            await interaction.response.send_message(f"`{ad}` komutu zaten mevcut!", ephemeral=True)
+            return
+        data[gid][ad] = cevap
+        _save(data)
+        self._komut_cache = None
+        embed = discord.Embed(title="Özel Komut Eklendi", color=discord.Color.green())
+        embed.add_field(name="Komut", value=f"`{ad}`", inline=True)
+        embed.add_field(name="Yanıt", value=cevap[:500], inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="komutsil", description="Sunucuya eklenmiş özel bir komutu sil")
+    @app_commands.describe(komut_ismi="Silinecek komutun adı (örn: !merhaba)")
+    @app_commands.guild_only()
+    @app_commands.checks.has_permissions(administrator=True)
+    async def komut_sil(self, interaction: discord.Interaction, komut_ismi: str):
+        ad = komut_ismi.strip().lower()
+        if not ad.startswith("!"):
+            ad = "!" + ad
+        data = _load()
+        gid = str(interaction.guild.id)
+        if gid in data and ad in data[gid]:
+            del data[gid][ad]
+            if not data[gid]:
+                del data[gid]
+            _save(data)
+            self._komut_cache = None
+            await interaction.response.send_message(f"`{ad}` komutu silindi.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"`{ad}` komutu bulunamadı.", ephemeral=True)
+
+    @app_commands.command(name="komutlistesi", description="Sunucudaki tüm özel komutları listele")
+    @app_commands.guild_only()
+    async def komut_listesi(self, interaction: discord.Interaction):
+        data = _load()
+        gid = str(interaction.guild.id)
+        komutlar = data.get(gid, {})
+        if not komutlar:
+            await interaction.response.send_message("Bu sunucuda hiç özel komut yok.", ephemeral=True)
+            return
+        embed = discord.Embed(title="Özel Komutlar", color=discord.Color.blue())
+        for ad, yanit in sorted(komutlar.items()):
+            embed.add_field(name=ad, value=yanit[:100] + ("..." if len(yanit) > 100 else ""), inline=False)
+        await interaction.response.send_message(embed=embed)
 
     @commands.Cog.listener()
     async def on_message(self, message):
