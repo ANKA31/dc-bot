@@ -7,10 +7,12 @@ import json
 import time
 import threading
 import asyncio
-from config import DISCORD_TOKEN
+from config import DISCORD_TOKEN, DATA_DIR
 from app import app
 
 from utils_json import read_json as _read_json, write_json as _write_json
+
+SYNC_FILE = os.path.join(DATA_DIR, "sync_pending.json") if DATA_DIR else "sync_pending.json"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -163,9 +165,9 @@ async def before_member_cache():
 @tasks.loop(seconds=20)
 async def guild_sync_loop():
     try:
-        if not os.path.exists("sync_pending.json"):
+        if not os.path.exists(SYNC_FILE):
             return
-        with open("sync_pending.json", "r") as f:
+        with open(SYNC_FILE, "r") as f:
             pending = json.load(f)
         if not pending:
             return
@@ -180,7 +182,7 @@ async def guild_sync_loop():
                     print(f"[SYNC] {guild.name} komutlari temizlendi.")
             except Exception as e:
                 print(f"[SYNC] {gid} hatasi: {e}")
-        with open("sync_pending.json", "w") as f:
+        with open(SYNC_FILE, "w") as f:
             json.dump(remaining, f)
         if not remaining:
             print("[SYNC] Tum sunucular senkronize edildi.")
@@ -337,7 +339,7 @@ async def on_ready():
         print(f"Global sync hatasi: {e}")
 
     guild_ids = [str(g.id) for g in bot.guilds]
-    with open("sync_pending.json", "w") as f:
+    with open(SYNC_FILE, "w") as f:
         json.dump(guild_ids, f)
     print(f"{len(guild_ids)} sunucu kuyruga alindi, arkaplanda senkronize edilecek.")
 
@@ -398,6 +400,8 @@ async def main():
     if not DISCORD_TOKEN:
         print("HATA: .env dosyasinda DISCORD_TOKEN bulunamadi!")
         sys.exit(1)
+    veri_klasoru = DATA_DIR if DATA_DIR else "proje klasoru"
+    print(f"[VERI] Dosyalar suraya kaydediliyor: {veri_klasoru}")
     try:
         web_thread = threading.Thread(target=run_web_panel, daemon=True)
         web_thread.start()
