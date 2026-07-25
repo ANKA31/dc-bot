@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROOTx | Discord Bot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e6;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-image:
+                radial-gradient(ellipse at 20% 50%, rgba(88,101,242,0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(237,66,69,0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 80%, rgba(87,242,135,0.05) 0%, transparent 40%);
+        }
+        .container { text-align: center; padding: 48px 24px; max-width: 700px; }
+        .logo { font-size: 48px; font-weight: 800; margin-bottom: 8px;
+            background: linear-gradient(135deg, #5865F2, #ED4245);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .tagline { color: #80808a; font-size: 16px; margin-bottom: 40px; }
+        .features {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 12px; margin-bottom: 40px; text-align: left;
+        }
+        .feature {
+            background: #13131a; border: 1px solid #1f1f2a;
+            border-radius: 12px; padding: 14px 18px; font-size: 13px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .feature i { color: #5865F2; font-size: 16px; width: 20px; text-align: center; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 28px; border-radius: 12px; font-size: 15px;
+            font-weight: 600; text-decoration: none; transition: all 0.2s;
+            border: none; cursor: pointer; margin: 6px;
+        }
+        .btn-discord { background: #5865F2; color: white; }
+        .btn-discord:hover { background: #4752c4; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(88,101,242,0.3); }
+        .btn-panel { background: #13131a; border: 1px solid #2a2a3a; color: #e0e0e6; }
+        .btn-panel:hover { border-color: #5865F2; color: #5865F2; transform: translateY(-2px); }
+        .footer { color: #585860; font-size: 12px; margin-top: 32px; }
+        @media (max-width: 500px) { .features { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">ROOTx</div>
+        <p class="tagline">Gelismis Discord Moderasyon ve Yonetim Botu</p>
+
+        <div class="features">
+            <div class="feature"><i class="fas fa-shield"></i> Gelismis Moderasyon</div>
+            <div class="feature"><i class="fas fa-robot"></i> AntiBot Korumasi</div>
+            <div class="feature"><i class="fas fa-ticket"></i> Ticket Sistemi</div>
+            <div class="feature"><i class="fas fa-gift"></i> Cekilis Sistemi</div>
+            <div class="feature"><i class="fas fa-check-circle"></i> Dogrulama Sistemi</div>
+            <div class="feature"><i class="fas fa-volume-high"></i> Ses Odasi Yonetimi</div>
+            <div class="feature"><i class="fas fa-chart-bar"></i> Detayli Log Kayitlari</div>
+            <div class="feature"><i class="fas fa-globe"></i> Sosyal Medya Takibi</div>
+        </div>
+
+        <a href="javascript:void(0)" id="invite-btn" class="btn btn-discord">
+            <i class="fab fa-discord"></i> Sunucuna Ekle
+        </a>
+        <a href="/login" class="btn btn-panel">
+            <i class="fas fa-lock"></i> Admin Panel
+        </a>
+
+        <p class="footer">ROOTx v1 &copy; 2025 - Tum haklari saklidir.</p>
+    </div>
+
+    <script>
+        (async function() {
+            const inviteBtn = document.getElementById('invite-btn');
+            try {
+                const apiBase = window.location.origin || 'http://localhost:5000';
+                const r = await fetch(apiBase + '/api/status');
+                const d = await r.json();
+                if (d.invite_url) {
+                    inviteBtn.href = d.invite_url;
+                } else if (d.bot_id && d.bot_id !== 'Bilinmiyor') {
+                    inviteBtn.href = `https://discord.com/api/oauth2/authorize?client_id=${d.bot_id}&permissions=8&scope=bot%20applications.commands`;
+                }
+            } catch(e) {
+                inviteBtn.href = '#';
+                inviteBtn.title = 'Bot su an cevrimdisi, davet linki alinamadi';
+                inviteBtn.style.opacity = '0.6';
+                inviteBtn.onclick = function(ev) { ev.preventDefault(); alert('Bot su an cevrimdisi. Once botu baslatmaniz gerekiyor.'); };
+            }
+            inviteBtn.target = '_blank';
+        })();
+    </script>
+</body>
+</html>

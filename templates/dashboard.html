@@ -315,6 +315,9 @@
         <div id="page-logs" class="page">
             <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
                 <input type="text" id="log-search" placeholder="Kullanici ara..." style="flex:1;min-width:200px;background:#13131a;border:1px solid #1f1f2a;border-radius:10px;padding:10px 14px;color:white;font-size:14px;outline:none">
+                <select id="log-guild-filter" style="background:#13131a;border:1px solid #1f1f2a;border-radius:10px;padding:10px 14px;color:white;font-size:14px;outline:none;min-width:160px">
+                    <option value="">Tum Sunucular</option>
+                </select>
                 <select id="log-filter" style="background:#13131a;border:1px solid #1f1f2a;border-radius:10px;padding:10px 14px;color:white;font-size:14px;outline:none">
                     <option value="">Tum Islemler</option>
                     <option value="BAN">Yasaklama</option>
@@ -325,7 +328,7 @@
                     <option value="LOCK">Kanal Kilitleme</option>
                     <option value="UNLOCK">Kanal Acma</option>
                 </select>
-                <span style="font-size:12px;color:#80808a;display:flex;align-items:center;gap:6px">
+                <span style="font-size:12px;color:#80808a;display:flex;align-items:center;gap:6px;white-space:nowrap">
                     <span class="status-dot" style="background:#57F287;width:6px;height:6px;display:inline-block;border-radius:50%;animation:pulse 1.5s infinite"></span>
                     <span id="log-count">Canli</span>
                 </span>
@@ -521,9 +524,22 @@
             document.querySelector(`[onclick="showPage('${name}')"]`).classList.add('active');
             const titles = { dashboard: 'Genel Bakis', servers: 'Sunucular', logs: 'Loglar', stats: 'Istatistikler', 'bot-kontrol': 'Bot Kontrol', moderasyon: 'Moderasyon', dogrulama: 'Dogrulama', ayarlar: 'Ayarlar' };
             document.getElementById('page-title').textContent = titles[name];
+            if (name === 'logs') loadLogs();
+            else if (name === 'stats') loadStats();
+            else if (name === 'servers') loadGuilds();
+            else if (name === 'moderasyon') loadModGuilds();
+            else if (name === 'dogrulama') { loadDogrulama(); loadDogrulamaLogs(); }
+            else if (name === 'ayarlar') loadAyarlar();
         }
 
         function closeModal() { document.getElementById('server-modal').classList.remove('active'); }
+
+        document.getElementById('server-modal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeModal();
+        });
 
         function badge(action) {
             const map = { BAN: ['Yasak', 'red'], KICK: ['Atildi', 'yellow'], WARN: ['Uyari', 'yellow'], PURGE: ['Silme', 'blue'], LOCK: ['Kilit', 'red'], UNLOCK: ['Acik', 'green'] };
@@ -593,27 +609,50 @@
 
         async function showDetail(guildId) {
             try {
-                const r = await fetch(`/api/guilds/${guildId}`);
-                const d = await r.json();
+                const [gr, sr] = await Promise.all([
+                    fetch(`/api/guilds/${guildId}`),
+                    fetch('/api/stats')
+                ]);
+                const d = await gr.json();
+                const sd = await sr.json();
                 if (d.error) return showToast(d.error, 'error');
                 const g = d.guild;
+                const guildStats = (sd.by_guild || {})[guildId];
                 document.getElementById('modal-title').textContent = g.name;
                 let html = `
-                    <div class="info-row"><span class="label">Sunucu ID</span><span>${g.id}</span></div>
-                    <div class="info-row"><span class="label">Uye Sayisi</span><span>${g.member_count}</span></div>
-                    <div class="info-row"><span class="label">Sahip</span><span>${g.owner_name}</span></div>
-                    <div class="info-row"><span class="label">Olusturulma</span><span>${g.created_at}</span></div>
+                    <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px">
+                        <div class="server-icon" style="width:56px;height:56px;font-size:24px">
+                            ${g.icon_url ? `<img src="${g.icon_url}" alt="">` : '<i class="fas fa-server"></i>'}
+                        </div>
+                        <div>
+                            <h4 style="margin:0">${g.name}</h4>
+                            <p style="color:#80808a;font-size:12px;margin-top:4px">ID: ${g.id}</p>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px">
+                        <div class="info-row"><span class="label">Uye Sayisi</span><span>${g.member_count || '?'}</span></div>
+                        <div class="info-row"><span class="label">Sahip</span><span>${g.owner_name || '?'}</span></div>
+                        <div class="info-row"><span class="label">Olusturulma</span><span>${g.created_at || '?'}</span></div>
+                        <div class="info-row"><span class="label">Toplam Islem</span><span>${guildStats ? guildStats.total : 0}</span></div>
+                    </div>
+                    ${guildStats ? `
+                    <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+                        <span class="badge red">${guildStats.actions?.BAN || 0} Ban</span>
+                        <span class="badge yellow">${guildStats.actions?.KICK || 0} Kick</span>
+                        <span class="badge green">${guildStats.actions?.WARN || 0} Warn</span>
+                    </div>` : ''}
                     <h4 style="margin:20px 0 12px;font-size:15px">Moderasyon Loglari</h4>
                     <table class="logs-table">
-                        <thead><tr><th>Islem</th><th>Moderator</th><th>Hedef</th><th>Sebep</th></tr></thead>
+                        <thead><tr><th>Islem</th><th>Moderator</th><th>Hedef</th><th>Sebep</th><th>Tarih</th></tr></thead>
                         <tbody>
                 `;
                 if (d.logs && d.logs.length) {
-                    d.logs.slice(-20).reverse().forEach(log => {
-                        html += `<tr><td>${badge(log.action)}</td><td>${log.moderator}</td><td>${log.target}</td><td>${log.reason}</td></tr>`;
+                    d.logs.slice(-30).reverse().forEach(log => {
+                        const time = log.timestamp ? new Date(log.timestamp*1000).toLocaleString('tr-TR') : '';
+                        html += `<tr><td>${badge(log.action)}</td><td>${log.moderator || '?'}</td><td>${log.target || '?'}</td><td>${log.reason || '-'}</td><td style="font-size:11px;color:#80808a">${time}</td></tr>`;
                     });
                 } else {
-                    html += '<tr><td colspan="4" style="text-align:center;color:#80808a">Henuz log yok</td></tr>';
+                    html += '<tr><td colspan="5" style="text-align:center;color:#80808a;padding:20px">Henuz log yok</td></tr>';
                 }
                 html += '</tbody></table></div>';
                 document.getElementById('modal-body').innerHTML = html;
@@ -637,42 +676,77 @@
             } catch(e) { showToast('Hata: ' + e, 'error'); }
         }
 
-        async function loadLogs() {
+        let allLogsCache = [];
+
+        async function loadLogs(reloadCache) {
             try {
-                const r = await fetch('/api/logs');
-                const d = await r.json();
-                const feed = document.getElementById('log-feed');
-                if (!d.logs || !d.logs.length) {
-                    feed.innerHTML = '<div class="empty"><i class="fas fa-list"></i><p>Henuz log yok</p></div>';
-                    return;
+                if (reloadCache !== false) {
+                    const r = await fetch('/api/logs');
+                    const d = await r.json();
+                    allLogsCache = d.logs || [];
                 }
-                const oldCount = feed.children.length;
-                feed.innerHTML = d.logs.map(l => {
-                    const a = (l.action || '').toLowerCase();
-                    const iconMap = {ban:'fa-gavel', kick:'fa-right-from-bracket', warn:'fa-triangle-exclamation', unwarn:'fa-check', purge:'fa-trash', lock:'fa-lock', unlock:'fa-lock-open'};
-                    const icon = iconMap[a] || 'fa-circle';
-                    const cls = ['ban','kick','warn','unwarn','purge','lock','unlock'].includes(a) ? a : 'default';
-                    const time = l.timestamp ? new Date(l.timestamp*1000).toLocaleString('tr-TR') : '';
-                    const guildName = l.guild_name || l.guild_id || '';
-                    return `
-                        <div class="log-card${d.logs.indexOf(l) < 3 ? ' new' : ''}">
-                            <div class="log-icon ${cls}"><i class="fas ${icon}"></i></div>
-                            <div class="log-info">
-                                <div class="log-title">${badge(l.action)} ${l.target} <span style="color:#80808a;font-weight:400">- ${l.reason}</span></div>
-                                <div class="log-meta"><i class="fas fa-user"></i> ${l.moderator} <i class="fas fa-server" style="margin-left:8px"></i> ${guildName}</div>
-                            </div>
-                            <div class="log-time">${time}</div>
-                        </div>
-                    `;
-                }).join('');
-                document.getElementById('log-count').textContent = d.logs.length + ' kayit';
+                await populateLogGuildFilter();
+                applyLogFilters();
             } catch(e) {}
+        }
+
+        async function populateLogGuildFilter() {
+            const guilds = allLogsCache.map(l => l.guild_name || l.guild_id).filter((v, i, a) => v && a.indexOf(v) === i);
+            const sel = document.getElementById('log-guild-filter');
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="">Tum Sunucular</option>'
+                + guilds.map(g => `<option value="${g}">${g}</option>`).join('');
+            if (currentVal && guilds.includes(currentVal)) sel.value = currentVal;
+        }
+
+        function applyLogFilters() {
+            const feed = document.getElementById('log-feed');
+            const actionFilter = document.getElementById('log-filter').value;
+            const guildFilter = document.getElementById('log-guild-filter').value;
+            const searchVal = document.getElementById('log-search').value.trim().toLowerCase();
+
+            let filtered = allLogsCache;
+            if (actionFilter) filtered = filtered.filter(l => l.action === actionFilter);
+            if (guildFilter) filtered = filtered.filter(l => (l.guild_name || l.guild_id) === guildFilter);
+            if (searchVal) filtered = filtered.filter(l =>
+                (l.target || '').toLowerCase().includes(searchVal) ||
+                (l.moderator || '').toLowerCase().includes(searchVal)
+            );
+
+            if (!filtered.length) {
+                feed.innerHTML = '<div class="empty"><i class="fas fa-list"></i><p>Eslesen log bulunamadi</p></div>';
+                document.getElementById('log-count').textContent = '0 kayit';
+                return;
+            }
+            feed.innerHTML = filtered.map((l, i) => {
+                const a = (l.action || '').toLowerCase();
+                const iconMap = {ban:'fa-gavel', kick:'fa-right-from-bracket', warn:'fa-triangle-exclamation', unwarn:'fa-check', purge:'fa-trash', lock:'fa-lock', unlock:'fa-lock-open'};
+                const icon = iconMap[a] || 'fa-circle';
+                const cls = ['ban','kick','warn','unwarn','purge','lock','unlock'].includes(a) ? a : 'default';
+                const time = l.timestamp ? new Date(l.timestamp*1000).toLocaleString('tr-TR') : '';
+                const guildName = l.guild_name || l.guild_id || '';
+                return `
+                    <div class="log-card${i < 3 ? ' new' : ''}">
+                        <div class="log-icon ${cls}"><i class="fas ${icon}"></i></div>
+                        <div class="log-info">
+                            <div class="log-title">${badge(l.action)} ${l.target || '?'} <span style="color:#80808a;font-weight:400">${l.reason ? '- '+l.reason : ''}</span></div>
+                            <div class="log-meta"><i class="fas fa-user"></i> ${l.moderator || '?'} <i class="fas fa-server" style="margin-left:8px"></i> ${guildName}</div>
+                        </div>
+                        <div class="log-time">${time}</div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('log-count').textContent = filtered.length + ' kayit';
         }
 
         function inviteBot() {
             fetch('/api/status').then(r=>r.json()).then(d => {
-                if (d.invite_url) window.open(d.invite_url, '_blank');
-                else showToast('Davet linki alinamadi', 'error');
+                let url = d.invite_url;
+                if (!url && d.bot_id && d.bot_id !== 'Bilinmiyor') {
+                    url = `https://discord.com/api/oauth2/authorize?client_id=${d.bot_id}&permissions=8&scope=bot%20applications.commands`;
+                }
+                if (url) window.open(url, '_blank');
+                else showToast('Davet linki alinamadi. Bot henuz baslatilmamis olabilir.', 'error');
             }).catch(() => showToast('Bot kapaliyken davet linki calismaz', 'error'));
         }
 
@@ -682,13 +756,19 @@
                 const d = await r.json();
 
                 const genel = d.genel || {};
-                const uptime = genel.uptime ? Math.floor((Date.now()/1000 - genel.uptime)/60) + ' dk once basladi' : 'Bilinmiyor';
+                const uptimeSecs = genel.uptime ? Math.max(0, Math.floor(Date.now()/1000 - genel.uptime)) : 0;
+                let uptimeStr = 'Bilinmiyor';
+                if (uptimeSecs > 0) {
+                    const d = Math.floor(uptimeSecs / 86400);
+                    const h = Math.floor((uptimeSecs % 86400) / 3600);
+                    const m = Math.floor((uptimeSecs % 3600) / 60);
+                    uptimeStr = (d > 0 ? d + 'g ' : '') + (h > 0 ? h + 's ' : '') + m + 'dk';
+                }
                 document.getElementById('genel-stats').innerHTML = `
                     <div class="info-row"><span class="label">Bot Adi</span><span>${genel.bot_name || 'Bilinmiyor'}</span></div>
                     <div class="info-row"><span class="label">Sunucu Sayisi</span><span>${genel.total_guilds || 0}</span></div>
                     <div class="info-row"><span class="label">Toplam Islem</span><span>${genel.total_actions || 0}</span></div>
-                    <div class="info-row"><span class="label">Komut Kullanimi</span><span>${genel.commands_used || 0}</span></div>
-                    <div class="info-row"><span class="label">Calisma Suresi</span><span>${uptime}</span></div>
+                    <div class="info-row"><span class="label">Calisma Suresi</span><span>${uptimeStr}</span></div>
                     <div style="margin-top:12px;padding-top:12px;border-top:1px solid #1f1f2a">
                         <div class="info-row"><span class="label">Ban</span><span style="color:#ED4245">${genel.total_bans || 0}</span></div>
                         <div class="info-row"><span class="label">Kick</span><span style="color:#FEE75C">${genel.total_kicks || 0}</span></div>
@@ -733,50 +813,13 @@
             } catch(e) {}
         }
 
-        function renderLogCards(logs) {
-            const feed = document.getElementById('log-feed');
-            if (!logs.length) {
-                feed.innerHTML = '<div class="empty"><i class="fas fa-list"></i><p>Eslesen log yok</p></div>';
-                return;
-            }
-            feed.innerHTML = logs.map(l => {
-                const a = (l.action || '').toLowerCase();
-                const iconMap = {ban:'fa-gavel', kick:'fa-right-from-bracket', warn:'fa-triangle-exclamation', unwarn:'fa-check', purge:'fa-trash', lock:'fa-lock', unlock:'fa-lock-open'};
-                const icon = iconMap[a] || 'fa-circle';
-                const cls = ['ban','kick','warn','unwarn','purge','lock','unlock'].includes(a) ? a : 'default';
-                const time = l.timestamp ? new Date(l.timestamp*1000).toLocaleString('tr-TR') : '';
-                const guildName = l.guild_name || l.guild_id || '';
-                return `
-                    <div class="log-card new">
-                        <div class="log-icon ${cls}"><i class="fas ${icon}"></i></div>
-                        <div class="log-info">
-                            <div class="log-title">${badge(l.action)} ${l.target} <span style="color:#80808a;font-weight:400">- ${l.reason}</span></div>
-                            <div class="log-meta"><i class="fas fa-user"></i> ${l.moderator} <i class="fas fa-server" style="margin-left:8px"></i> ${guildName}</div>
-                        </div>
-                        <div class="log-time">${time}</div>
-                    </div>
-                `;
-            }).join('');
-        }
+        document.getElementById('log-filter').addEventListener('change', () => applyLogFilters());
+        document.getElementById('log-guild-filter').addEventListener('change', () => applyLogFilters());
 
-        document.getElementById('log-filter').addEventListener('change', async e => {
-            try {
-                const r = await fetch('/api/logs/filter?action=' + e.target.value);
-                const d = await r.json();
-                renderLogCards(d.logs);
-                document.getElementById('log-count').textContent = d.logs.length + ' kayit';
-            } catch(e) {}
-        });
-
-        document.getElementById('log-search').addEventListener('input', async e => {
-            const val = e.target.value.trim();
-            if (!val) { loadLogs(); return; }
-            try {
-                const r = await fetch('/api/logs/user/' + encodeURIComponent(val));
-                const d = await r.json();
-                renderLogCards(d.logs);
-                document.getElementById('log-count').textContent = d.logs.length + ' kayit';
-            } catch(e) {}
+        let logSearchTimeout;
+        document.getElementById('log-search').addEventListener('input', () => {
+            clearTimeout(logSearchTimeout);
+            logSearchTimeout = setTimeout(() => applyLogFilters(), 300);
         });
 
         function filterModUsers() {
@@ -926,28 +969,33 @@
         async function searchUsers() {
             const q = document.getElementById('user-search-input').value.trim();
             const div = document.getElementById('user-search-results');
-            if (!q) { div.innerHTML = 'Arama yapmak icin bir isim girin.'; return; }
+            if (!q) { div.innerHTML = '<span style="color:#80808a">Arama yapmak icin bir isim girin.</span>'; return; }
+            div.innerHTML = '<span style="color:#80808a"><i class="fas fa-spinner fa-spin"></i> Araniyor...</span>';
             try {
                 const r = await fetch('/api/guilds');
                 const guilds = await r.json();
-                let results = [];
-                for (const g of guilds) {
-                    const mr = await fetch(`/api/members/${g.id}`);
-                    const md = await mr.json();
-                    const matches = (md.members || []).filter(m =>
-                        m.name.toLowerCase().includes(q.toLowerCase()) ||
-                        m.display_name.toLowerCase().includes(q.toLowerCase())
-                    );
-                    matches.forEach(m => results.push({guild: g.name, guild_id: g.id, ...m}));
-                }
-                if (!results.length) { div.innerHTML = 'Eslesen kullanici bulunamadi.'; return; }
-                div.innerHTML = results.map(r => `
+                if (!guilds.length) { div.innerHTML = '<span style="color:#80808a">Henuz sunucu yok</span>'; return; }
+                const memberPromises = guilds.map(g => 
+                    fetch(`/api/members/${g.id}`).then(r => r.json()).then(md => ({
+                        guild: g.name, guild_id: g.id,
+                        members: (md.members || []).filter(m =>
+                            m.name.toLowerCase().includes(q.toLowerCase()) ||
+                            m.display_name.toLowerCase().includes(q.toLowerCase())
+                        )
+                    })).catch(() => ({ guild: g.name, guild_id: g.id, members: [] }))
+                );
+                const allResults = await Promise.all(memberPromises);
+                const results = [];
+                allResults.forEach(g => g.members.forEach(m => results.push({guild: g.guild, guild_id: g.guild_id, ...m})));
+                if (!results.length) { div.innerHTML = '<span style="color:#80808a">Eslesen kullanici bulunamadi.</span>'; return; }
+                div.innerHTML = results.slice(0, 50).map(r => `
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#0a0a0f;border-radius:8px;margin-bottom:4px;font-size:13px">
-                        <span><strong>${r.display_name}</strong> (${r.name})</span>
+                        <span><strong>${r.display_name || r.name}</strong> (${r.name})</span>
                         <span style="color:#80808a">${r.guild}</span>
                     </div>
                 `).join('');
-            } catch(e) { div.innerHTML = 'Hata: ' + e; }
+                if (results.length > 50) div.innerHTML += '<div style="text-align:center;color:#80808a;font-size:12px;padding:4px">... ve ' + (results.length - 50) + ' daha</div>';
+            } catch(e) { div.innerHTML = '<span style="color:#ED4245">Hata: ' + e + '</span>'; }
         }
 
         async function loadDogrulama() {
@@ -985,12 +1033,14 @@
                 }
                 div.innerHTML = d.logs.map(l => {
                     const time = l.timestamp ? new Date(l.timestamp*1000).toLocaleString('tr-TR') : '';
+                    const displayName = l.display_name || l.user_name || l.user_id || 'Bilinmiyor';
+                    const guildName = l.guild_name || l.guild_id || 'Bilinmiyor';
                     return `
                         <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#0a0a0f;border-radius:8px">
                             <div style="width:32px;height:32px;border-radius:50%;background:rgba(87,242,135,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#57F287"><i class="fas fa-check"></i></div>
                             <div style="flex:1;min-width:0">
-                                <div style="font-weight:500;font-size:13px">${l.display_name}</div>
-                                <div style="color:#80808a;font-size:11px"><i class="fas fa-server"></i> ${l.guild_name}</div>
+                                <div style="font-weight:500;font-size:13px">${displayName}</div>
+                                <div style="color:#80808a;font-size:11px"><i class="fas fa-server"></i> ${guildName}</div>
                             </div>
                             <div style="font-size:10px;color:#585860;white-space:nowrap">${time}</div>
                         </div>
@@ -1079,19 +1129,14 @@
         loadDogrulamaLogs();
         loadAyarlar();
         setInterval(() => {
-            const logPage = document.getElementById('page-logs');
-            const dogrulamaPage = document.getElementById('page-dogrulama');
-            const ayarlarPage = document.getElementById('page-ayarlar');
-            if (!logPage.classList.contains('active') && !dogrulamaPage.classList.contains('active') && !ayarlarPage.classList.contains('active')) loadAll();
+            const activePage = document.querySelector('.page.active');
+            if (!activePage) return;
+            const pageId = activePage.id;
+            if (pageId === 'page-logs') loadLogs();
+            else if (pageId === 'page-dogrulama') { loadDogrulama(); loadDogrulamaLogs(); }
+            else if (pageId === 'page-ayarlar') loadAyarlar();
+            else loadAll();
         }, 30000);
-        setInterval(() => {
-            const logPage = document.getElementById('page-logs');
-            if (logPage.classList.contains('active')) loadLogs();
-        }, 300000);
-        setInterval(() => {
-            const dogrulamaPage = document.getElementById('page-dogrulama');
-            if (dogrulamaPage.classList.contains('active')) { loadDogrulama(); loadDogrulamaLogs(); }
-        }, 300000);
     </script>
 </body>
 </html>
