@@ -122,9 +122,8 @@ async def guild_sync_loop():
                 guild = bot.get_guild(int(gid))
                 if guild:
                     bot.tree.clear_commands(guild=guild)
-                    bot.tree.copy_global_to(guild=guild)
                     await bot.tree.sync(guild=guild)
-                    print(f"[SYNC] {guild.name} komutlari guncellendi.")
+                    print(f"[SYNC] {guild.name} sunucuya ozel komutlar temizlendi.")
             except Exception as e:
                 print(f"[SYNC] {gid} hatasi: {e}")
         with open(SYNC_FILE, "w") as f:
