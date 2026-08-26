@@ -1,5 +1,4 @@
 from flask import Flask, render_template, jsonify, request, redirect, session, url_for
-from flask_cors import CORS
 import json
 import os
 import secrets
@@ -9,7 +8,11 @@ from utils_json import read_json as _read_json, write_json as _write_json
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
-CORS(app)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE", "0") == "1",
+)
 
 MODLOGS_FILE = "modlogs.json"
 BOT_STATUS_FILE = "bot_status.json"
@@ -19,6 +22,11 @@ WEB_COMMANDS_FILE = "web_commands.json"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:
     raise RuntimeError("ADMIN_PASSWORD environment variable is not set!")
+
+@app.before_request
+def require_login_for_api():
+    if request.path.startswith("/api/") and not session.get("logged_in"):
+        return jsonify({"error": "Yetkisiz"}), 401
 
 def get_modlogs():
     return _read_json(MODLOGS_FILE, {})
@@ -59,7 +67,6 @@ def api_status():
     logs = get_modlogs()
     total_bans = sum(1 for gl in logs.values() for log in gl if log.get("action") == "BAN")
     total_kicks = sum(1 for gl in logs.values() for log in gl if log.get("action") == "KICK")
-    total_warns = sum(1 for gl in logs.values() for log in gl if log.get("action") == "WARN")
     total_mutes = sum(1 for gl in logs.values() for log in gl if log.get("action") == "MUTE")
     return jsonify({
         "status": status.get("status", "offline"),
@@ -72,7 +79,6 @@ def api_status():
         "stats": {
             "total_bans": total_bans,
             "total_kicks": total_kicks,
-            "total_warns": total_warns,
             "total_mutes": total_mutes
         }
     })
@@ -162,7 +168,6 @@ def api_stats():
         "total_actions": sum(by_action.values()),
         "total_bans": by_action.get("BAN", 0),
         "total_kicks": by_action.get("KICK", 0),
-        "total_warns": by_action.get("WARN", 0),
         "uptime": status.get("uptime", 0),
         "commands_used": status.get("commands_used", 0),
         "bot_name": status.get("bot_name", "Bilinmiyor")
@@ -198,9 +203,6 @@ def write_web_command(data):
     komutlar = _read_json(WEB_COMMANDS_FILE, [])
     komutlar.append(data)
     _write_json(WEB_COMMANDS_FILE, komutlar)
-
-def get_warns():
-    return _read_json("warns_storage.json", {})
 
 def get_members_cache():
     return _read_json("members_cache.json", [])
@@ -249,7 +251,7 @@ def api_mod_action():
     user_name = data.get("user_name", "Bilinmiyor")
     if not all([guild_id, user_id, action]):
         return jsonify({"error": "guild_id, user_id ve action gerekli"}), 400
-    if action not in ("ban", "kick", "warn"):
+    if action not in ("ban", "kick"):
         return jsonify({"error": "Gecersiz islem"}), 400
     write_web_command({
         "type": action,
@@ -261,25 +263,6 @@ def api_mod_action():
     })
     return jsonify({"success": True, "message": f"{action} islemi gonderildi."})
 
-@app.route("/api/mod/unwarn", methods=["POST"])
-def api_mod_unwarn():
-    if not session.get("logged_in"):
-        return jsonify({"error": "Yetkisiz"}), 401
-    data = request.get_json()
-    guild_id = data.get("guild_id")
-    user_id = data.get("user_id")
-    warn_id = data.get("warn_id")
-    if not all([guild_id, user_id, warn_id is not None]):
-        return jsonify({"error": "guild_id, user_id ve warn_id gerekli"}), 400
-    write_web_command({
-        "type": "unwarn",
-        "guild_id": guild_id,
-        "user_id": user_id,
-        "warn_id": warn_id,
-        "moderator": "WebPanel"
-    })
-    return jsonify({"success": True, "message": "Uyari kaldirma islemi gonderildi."})
-
 @app.route("/api/members/<guild_id>")
 def api_members(guild_id):
     if not session.get("logged_in"):
@@ -289,21 +272,6 @@ def api_members(guild_id):
         if g["id"] == guild_id:
             return jsonify({"members": g["members"]})
     return jsonify({"members": []})
-
-@app.route("/api/warns/<guild_id>/<user_id>")
-def api_warns(guild_id, user_id):
-    if not session.get("logged_in"):
-        return jsonify({"error": "Yetkisiz"}), 401
-    warns = get_warns()
-    guild_data = warns.get(guild_id, {})
-    if isinstance(guild_data, dict) and "users" in guild_data:
-        user_data = guild_data["users"].get(user_id, {})
-        user_warns = [w for w in user_data.get("warns", []) if w.get("active", True)]
-    elif isinstance(guild_data, list):
-        user_warns = [w for w in guild_data if w["user_id"] == user_id and w.get("active", True)]
-    else:
-        user_warns = []
-    return jsonify({"warns": user_warns})
 
 def get_dogrulama_settings():
     return _read_json("dogrulama_settings.json", {})
@@ -351,11 +319,12 @@ def api_ayarlar():
 
     karsilama = _json_oku("karsilama_settings.json")
     otorol = _json_oku("otorol_settings.json")
-    reaction = _json_oku("reaction_roles.json")
     voice = _json_oku("voice_settings.json")
     instagram = _json_oku("instagram_settings.json")
-    kick = _json_oku("kick_clips_settings.json")
     dogrulama = _json_oku("dogrulama_settings.json")
+    ticket = _json_oku("ticket_settings.json")
+    antibot = _json_oku("antibot_settings.json")
+    otokoruma = _json_oku("autmod_settings.json")
 
     sonuc = []
     for g in guilds:
@@ -363,11 +332,12 @@ def api_ayarlar():
         gname = g["name"]
         k = karsilama.get(gid, {})
         o = otorol.get(gid, {})
-        r = reaction.get(gid, {"roller": []})
         v = voice.get(gid, {})
         i = instagram.get(gid, {"hesaplar": []})
-        kc = kick.get(gid, {"kanallar": []})
         d = dogrulama.get(gid, {})
+        t = ticket.get(gid, {})
+        ab = antibot.get(gid, {})
+        ok = otokoruma.get(gid, {})
         guild_logs = logs.get(gid, [])[-5:]
         guild_logs.reverse()
         sonuc.append({
@@ -381,23 +351,25 @@ def api_ayarlar():
             "otorol": {
                 "rol": o.get("rol")
             },
-            "reaction_rol": {
-                "kanal": r.get("kanal"),
-                "rol_sayisi": len(r.get("roller", []))
-            },
             "ses_odasi": {
-                "kanal": v.get("kanal"),
+                "kanal": v.get("giris_kanal") or v.get("kanal"),
                 "kategori": v.get("kategori"),
                 "panel": v.get("panel"),
-                "aktif": bool(v.get("kanal") and v.get("kategori"))
+                "aktif": bool((v.get("giris_kanal") or v.get("kanal")) and v.get("kategori"))
             },
             "instagram": {
                 "hesap_sayisi": len(i.get("hesaplar", [])),
                 "hesaplar": i.get("hesaplar", [])
             },
-            "kick_clips": {
-                "kanal_sayisi": len(kc.get("kanallar", [])),
-                "kanallar": kc.get("kanallar", [])
+            "ticket": {
+                "aktif": bool(t.get("kanal_id")),
+                "yetkili_sayisi": len(t.get("yetkililer", []))
+            },
+            "antibot": {"aktif": bool(ab.get("aktif"))},
+            "otokoruma": {
+                "link": bool(ok.get("link_filter")),
+                "spam": bool(ok.get("spam_filter")),
+                "aktif": bool(ok.get("link_filter") or ok.get("spam_filter"))
             },
             "dogrulama": {
                 "aktif": all([d.get("kayitsiz_rol"), d.get("uye_rol"), d.get("dogrulama_kanal")])
@@ -409,5 +381,4 @@ def api_ayarlar():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     print(f"Admin Panel: http://localhost:{port}")
-    print(f"Sifre: {ADMIN_PASSWORD}")
     app.run(debug=False, port=port, host="0.0.0.0")

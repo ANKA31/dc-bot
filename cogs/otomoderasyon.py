@@ -5,6 +5,7 @@ import re
 import json
 import os
 from datetime import timedelta, datetime
+from utils_json import read_json, write_json
 
 class SpamSureModal(discord.ui.Modal, title="Spam Susturma Süresi"):
     def __init__(self, cog, guild_id):
@@ -85,16 +86,11 @@ class Otomoderasyon(commands.Cog):
 
     def _init_settings(self):
         if not os.path.exists(self.settings_file):
-            with open(self.settings_file, "w") as f:
-                json.dump({}, f)
+            write_json(self.settings_file, {})
 
     def _get_guild_settings(self, guild_id: int):
         defaults = {"link_filter": False, "spam_filter": False, "spam_mute_duration": 5}
-        try:
-            with open(self.settings_file, "r") as f:
-                settings = json.load(f)
-        except:
-            settings = {}
+        settings = read_json(self.settings_file, {})
         gid = str(guild_id)
         if gid not in settings:
             settings[gid] = defaults
@@ -104,14 +100,9 @@ class Otomoderasyon(commands.Cog):
         return settings[gid]
 
     def _save_guild_settings(self, guild_id: int, settings: dict):
-        try:
-            with open(self.settings_file, "r") as f:
-                all_settings = json.load(f)
-        except:
-            all_settings = {}
+        all_settings = read_json(self.settings_file, {})
         all_settings[str(guild_id)] = settings
-        with open(self.settings_file, "w") as f:
-            json.dump(all_settings, f, indent=4)
+        write_json(self.settings_file, all_settings)
 
     def _build_embed(self, s):
         embed = discord.Embed(title="Oto Koruma Sistemi", description="Link ve spam filtrelerini butonlarla yönetebilirsin.", color=discord.Color.blue())

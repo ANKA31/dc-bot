@@ -11,9 +11,9 @@ BACKUP_DIR = "backups"
 ILGILI_DOSYALAR = [
     "ozel_komutlar.json", "instagram_settings.json",
     "voice_settings.json", "log_settings.json",
-    "ticket_settings.json", "reaction_roles.json", "otorol_settings.json",
+    "ticket_settings.json", "otorol_settings.json",
     "karsilama_settings.json", "dogrulama_settings.json", "antibot_settings.json",
-    "autmod_settings.json", "kick_clips_settings.json", "warns.json", "warns_storage.json", "modlogs.json",
+    "autmod_settings.json", "modlogs.json",
     "dogrulama_logs.json", "bot_status.json"
 ]
 

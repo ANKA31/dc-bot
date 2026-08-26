@@ -3,18 +3,16 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
+import re
+from utils_json import read_json, write_json
 
 OZEL_KOMUT_FILE = "ozel_komutlar.json"
 
 def _load():
-    if not os.path.exists(OZEL_KOMUT_FILE):
-        return {}
-    with open(OZEL_KOMUT_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return read_json(OZEL_KOMUT_FILE, {})
 
 def _save(data):
-    with open(OZEL_KOMUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
+    write_json(OZEL_KOMUT_FILE, data)
 
 class KomutEkleModal(discord.ui.Modal, title="Özel Komut Ekle"):
     komut_adi = discord.ui.TextInput(label="Komut Adı", placeholder="örnek: !merhaba", required=True, max_length=50)
@@ -29,6 +27,9 @@ class KomutEkleModal(discord.ui.Modal, title="Özel Komut Ekle"):
         ad = self.komut_adi.value.strip().lower()
         if not ad.startswith("!"):
             ad = "!" + ad
+        if not re.fullmatch(r"![a-z0-9_-]{1,30}", ad):
+            await interaction.response.send_message("Komut adı yalnızca harf, sayı, `_` ve `-` içerebilir.", ephemeral=True)
+            return
         data = _load()
         gid = str(self.guild_id)
         if gid not in data:
@@ -36,7 +37,7 @@ class KomutEkleModal(discord.ui.Modal, title="Özel Komut Ekle"):
         if ad in data[gid]:
             await interaction.response.send_message(f"`{ad}` komutu zaten mevcut!", ephemeral=True)
             return
-        data[gid][ad] = self.yanit.value
+        data[gid][ad] = self.yanit.value.strip()
         _save(data)
         embed = discord.Embed(title="Özel Komut Eklendi", color=discord.Color.green())
         embed.add_field(name="Komut", value=f"`{ad}`", inline=True)
@@ -129,6 +130,13 @@ class OzelKomut(commands.Cog):
         ad = komut_ismi.strip().lower()
         if not ad.startswith("!"):
             ad = "!" + ad
+        if not re.fullmatch(r"![a-z0-9_-]{1,30}", ad):
+            await interaction.response.send_message("Komut adı yalnızca harf, sayı, `_` ve `-` içerebilir.", ephemeral=True)
+            return
+        cevap = cevap.strip()
+        if not cevap or len(cevap) > 2000:
+            await interaction.response.send_message("Cevap 1-2000 karakter arasında olmalı.", ephemeral=True)
+            return
         data = _load()
         gid = str(interaction.guild.id)
         if gid not in data:
@@ -189,9 +197,15 @@ class OzelKomut(commands.Cog):
         komutlar = data.get(gid, {})
         if not komutlar:
             return
-        cmd = message.content.strip().lower()
+        parts = message.content.strip().split(maxsplit=1)
+        cmd = parts[0].lower()
         if cmd in komutlar:
-            await message.channel.send(komutlar[cmd])
+            args = parts[1] if len(parts) > 1 else ""
+            response = komutlar[cmd].replace("{user}", message.author.display_name)
+            response = response.replace("{mention}", message.author.mention)
+            response = response.replace("{server}", message.guild.name)
+            response = response.replace("{args}", args)
+            await message.channel.send(response, allowed_mentions=discord.AllowedMentions.none())
 
 async def setup(bot):
     await bot.add_cog(OzelKomut(bot))

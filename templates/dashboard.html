@@ -213,8 +213,6 @@
         }
         .log-icon.ban { background: rgba(237,66,69,0.15); color: #ED4245; }
         .log-icon.kick { background: rgba(254,231,92,0.15); color: #FEE75C; }
-        .log-icon.warn { background: rgba(254,231,92,0.15); color: #FEE75C; }
-        .log-icon.unwarn { background: rgba(87,242,135,0.15); color: #57F287; }
         .log-icon.purge { background: rgba(88,101,242,0.15); color: #5865F2; }
         .log-icon.lock { background: rgba(237,66,69,0.15); color: #ED4245; }
         .log-icon.unlock { background: rgba(87,242,135,0.15); color: #57F287; }
@@ -301,7 +299,6 @@
                 <div class="stat-card"><h4>Sunucu Sayisi</h4><div class="num blue" id="stat-guilds">0</div></div>
                 <div class="stat-card"><h4>Yasaklamalar</h4><div class="num red" id="stat-bans">0</div></div>
                 <div class="stat-card"><h4>Atilanlar</h4><div class="num yellow" id="stat-kicks">0</div></div>
-                <div class="stat-card"><h4>Uyarilar</h4><div class="num green" id="stat-warns">0</div></div>
             </div>
             <div class="section-title"><i class="fas fa-server"></i> Son Eklenen Sunucular</div>
             <div class="server-grid" id="recent-servers"></div>
@@ -322,11 +319,7 @@
                     <option value="">Tum Islemler</option>
                     <option value="BAN">Yasaklama</option>
                     <option value="KICK">Atma</option>
-                    <option value="WARN">Uyari</option>
-                    <option value="UNWARN">Uyari Kaldirma</option>
                     <option value="PURGE">Mesaj Silme</option>
-                    <option value="LOCK">Kanal Kilitleme</option>
-                    <option value="UNLOCK">Kanal Acma</option>
                 </select>
                 <span style="font-size:12px;color:#80808a;display:flex;align-items:center;gap:6px;white-space:nowrap">
                     <span class="status-dot" style="background:#57F287;width:6px;height:6px;display:inline-block;border-radius:50%;animation:pulse 1.5s infinite"></span>
@@ -362,8 +355,6 @@
                 </div>
             </div>
         </div>
-    </div>
-
     <div id="page-bot-kontrol" class="page">
         <div class="section-title"><i class="fas fa-sliders"></i> Bot Kontrol</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -418,25 +409,10 @@
                     <select id="mod-action" style="background:#0a0a0f;border:1px solid #1f1f2a;border-radius:10px;padding:10px 14px;color:white;font-size:14px;outline:none">
                         <option value="ban">Yasakla (Ban)</option>
                         <option value="kick">At (Kick)</option>
-                        <option value="warn">Uyar (Warn)</option>
-                    </select>
+                </select>
                     <input type="text" id="mod-reason" placeholder="Sebep..." style="background:#0a0a0f;border:1px solid #1f1f2a;border-radius:10px;padding:10px 14px;color:white;font-size:14px;outline:none">
                     <button class="btn-primary" onclick="executeModAction()"><i class="fas fa-play"></i> Uygula</button>
                 </div>
-            </div>
-            <div style="background:#13131a;border:1px solid #1f1f2a;border-radius:16px;padding:24px">
-                <h4 style="margin-bottom:16px;font-size:14px;color:#80808a">Uyari Gecmisi</h4>
-                <div style="display:flex;gap:8px;margin-bottom:12px">
-                    <select id="warn-user-guild" style="flex:1;background:#0a0a0f;border:1px solid #1f1f2a;border-radius:10px;padding:10px 14px;color:white;font-size:14px;outline:none" onchange="loadWarnUsers()">
-                        <option value="">Sunucu Secin</option>
-                    </select>
-                </div>
-                <div id="warn-user-select-wrap" style="display:none;margin-bottom:12px">
-                    <select id="warn-user-select" style="width:100%;background:#0a0a0f;border:1px solid #1f1f2a;border-radius:10px;padding:10px 14px;color:white;font-size:14px;outline:none" onchange="loadWarnHistory()">
-                        <option value="">Kullanici Secin</option>
-                    </select>
-                </div>
-                <div id="warn-history" style="font-size:13px;color:#80808a">Kullanici secin</div>
             </div>
         </div>
         <div style="margin-top:16px;background:#13131a;border:1px solid #1f1f2a;border-radius:16px;padding:24px">
@@ -497,6 +473,8 @@
         </div>
     </div>
 
+    </div>
+
     <div class="detail-modal" id="server-modal">
         <div class="detail-content">
             <button class="close" onclick="closeModal()"><i class="fas fa-xmark"></i></button>
@@ -542,7 +520,7 @@
         });
 
         function badge(action) {
-            const map = { BAN: ['Yasak', 'red'], KICK: ['Atildi', 'yellow'], WARN: ['Uyari', 'yellow'], PURGE: ['Silme', 'blue'], LOCK: ['Kilit', 'red'], UNLOCK: ['Acik', 'green'] };
+            const map = { BAN: ['Yasak', 'red'], KICK: ['Atildi', 'yellow'], PURGE: ['Silme', 'blue'] };
             const [text, cls] = map[action] || [action, 'blue'];
             return `<span class="badge ${cls}">${text}</span>`;
         }
@@ -567,7 +545,6 @@
                 document.getElementById('stat-guilds').textContent = d.guilds || '0';
                 document.getElementById('stat-bans').textContent = d.stats.total_bans;
                 document.getElementById('stat-kicks').textContent = d.stats.total_kicks;
-                document.getElementById('stat-warns').textContent = d.stats.total_warns;
             } catch(e) {}
         }
 
@@ -639,7 +616,6 @@
                     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
                         <span class="badge red">${guildStats.actions?.BAN || 0} Ban</span>
                         <span class="badge yellow">${guildStats.actions?.KICK || 0} Kick</span>
-                        <span class="badge green">${guildStats.actions?.WARN || 0} Warn</span>
                     </div>` : ''}
                     <h4 style="margin:20px 0 12px;font-size:15px">Moderasyon Loglari</h4>
                     <table class="logs-table">
@@ -720,9 +696,9 @@
             }
             feed.innerHTML = filtered.map((l, i) => {
                 const a = (l.action || '').toLowerCase();
-                const iconMap = {ban:'fa-gavel', kick:'fa-right-from-bracket', warn:'fa-triangle-exclamation', unwarn:'fa-check', purge:'fa-trash', lock:'fa-lock', unlock:'fa-lock-open'};
+                const iconMap = {ban:'fa-gavel', kick:'fa-right-from-bracket', purge:'fa-trash'};
                 const icon = iconMap[a] || 'fa-circle';
-                const cls = ['ban','kick','warn','unwarn','purge','lock','unlock'].includes(a) ? a : 'default';
+                const cls = ['ban','kick','purge'].includes(a) ? a : 'default';
                 const time = l.timestamp ? new Date(l.timestamp*1000).toLocaleString('tr-TR') : '';
                 const guildName = l.guild_name || l.guild_id || '';
                 return `
@@ -772,7 +748,6 @@
                     <div style="margin-top:12px;padding-top:12px;border-top:1px solid #1f1f2a">
                         <div class="info-row"><span class="label">Ban</span><span style="color:#ED4245">${genel.total_bans || 0}</span></div>
                         <div class="info-row"><span class="label">Kick</span><span style="color:#FEE75C">${genel.total_kicks || 0}</span></div>
-                        <div class="info-row"><span class="label">Warn</span><span style="color:#57F287">${genel.total_warns || 0}</span></div>
                     </div>
                 `;
 
@@ -788,15 +763,14 @@
                 const guildEntries = Object.entries(bg);
                 document.getElementById('guild-stats').innerHTML = guildEntries.length
                     ? `<table class="logs-table" style="width:100%">
-                        <thead><tr><th>Sunucu</th><th>Toplam</th><th>Ban</th><th>Kick</th><th>Warn</th><th>Diger</th></tr></thead>
+                        <thead><tr><th>Sunucu</th><th>Toplam</th><th>Ban</th><th>Kick</th><th>Diger</th></tr></thead>
                         <tbody>${guildEntries.map(([id, g]) => `
                             <tr>
                                 <td>${g.name || id}</td>
                                 <td>${g.total}</td>
                                 <td style="color:#ED4245">${g.actions?.BAN || 0}</td>
                                 <td style="color:#FEE75C">${g.actions?.KICK || 0}</td>
-                                <td style="color:#57F287">${g.actions?.WARN || 0}</td>
-                                <td>${g.total - (g.actions?.BAN||0) - (g.actions?.KICK||0) - (g.actions?.WARN||0)}</td>
+                                <td>${g.total - (g.actions?.BAN||0) - (g.actions?.KICK||0)}</td>
                             </tr>
                         `).join('')}</tbody></table>`
                     : '<p style="color:#80808a;font-size:14px">Henuz veri yok</p>';
@@ -877,10 +851,8 @@
                 const r = await fetch('/api/guilds');
                 const guilds = await r.json();
                 const sel1 = document.getElementById('mod-guild');
-                const sel2 = document.getElementById('warn-user-guild');
                 const opts = guilds.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
                 sel1.innerHTML = '<option value="">Sunucu Secin</option>' + opts;
-                sel2.innerHTML = '<option value="">Sunucu Secin</option>' + opts;
             } catch(e) {}
         }
 
@@ -913,56 +885,6 @@
                 });
                 const d = await r.json();
                 showToast(d.message || 'Hata', d.success ? 'success' : 'error');
-            } catch(e) { showToast('Hata: ' + e, 'error'); }
-        }
-
-        async function loadWarnUsers() {
-            const guildId = document.getElementById('warn-user-guild').value;
-            const wrap = document.getElementById('warn-user-select-wrap');
-            const sel = document.getElementById('warn-user-select');
-            if (!guildId) { wrap.style.display = 'none'; return; }
-            try {
-                const r = await fetch(`/api/members/${guildId}`);
-                const d = await r.json();
-                sel.innerHTML = '<option value="">Kullanici Secin</option>'
-                    + (d.members || []).map(m => `<option value="${m.id}">${m.display_name} (${m.name})</option>`).join('');
-                wrap.style.display = 'block';
-            } catch(e) {}
-        }
-
-        async function loadWarnHistory() {
-            const guildId = document.getElementById('warn-user-guild').value;
-            const userId = document.getElementById('warn-user-select').value;
-            const div = document.getElementById('warn-history');
-            if (!guildId || !userId) { div.innerHTML = 'Kullanici secin'; return; }
-            try {
-                const r = await fetch(`/api/warns/${guildId}/${userId}`);
-                const d = await r.json();
-                if (!d.warns || !d.warns.length) { div.innerHTML = 'Bu kullanicinin aktif uyarisi yok.'; return; }
-                div.innerHTML = d.warns.map(w => `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#0a0a0f;border-radius:8px;margin-bottom:6px">
-                        <div>
-                            <span style="color:#FEE75C;font-weight:600">#${w.id}</span>
-                            <span style="color:#80808a;margin-left:8px">${w.reason}</span>
-                            <span style="color:#80808a;font-size:11px;display:block;margin-top:2px">${w.moderator} - ${new Date(w.timestamp*1000).toLocaleString('tr-TR')}</span>
-                        </div>
-                        <button class="btn-icon danger" onclick="removeWarn('${guildId}','${userId}',${w.id})" title="Kaldir"><i class="fas fa-xmark"></i></button>
-                    </div>
-                `).join('');
-            } catch(e) { div.innerHTML = 'Hata: ' + e; }
-        }
-
-        async function removeWarn(guildId, userId, warnId) {
-            if (!confirm('Bu uyariyi kaldirmak istediginize emin misiniz?')) return;
-            try {
-                const r = await fetch('/api/mod/unwarn', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({guild_id: guildId, user_id: userId, warn_id: warnId})
-                });
-                const d = await r.json();
-                showToast(d.message || 'Hata', d.success ? 'success' : 'error');
-                if (d.success) setTimeout(loadWarnHistory, 1000);
             } catch(e) { showToast('Hata: ' + e, 'error'); }
         }
 
@@ -1062,14 +984,16 @@
                 con.innerHTML = d.map(g => {
                     const k = g.karsilama || {};
                     const o = g.otorol || {};
-                    const rr = g.reaction_rol || {};
                     const v = g.ses_odasi || {};
                     const ig = g.instagram || {};
                     const dg = g.dogrulama || {};
+                    const tk = g.ticket || {};
+                    const ab = g.antibot || {};
+                    const ok = g.otokoruma || {};
                     const logs = g.son_islemler || [];
 
                     function durum(aktif) { return aktif ? '<span class="badge green">Aktif</span>' : '<span class="badge red">Pasif</span>'; }
-                    function badgeAc(a) { const m = {BAN:['Yasak','red'],KICK:['Atma','yellow'],WARN:['Uyari','yellow'],UNWARN:['Affed','green'],PURGE:['Temizlik','blue'],LOCK:['Kilit','red'],UNLOCK:['Acik','green']}; const t=m[a]||[a,'blue']; return `<span class="badge ${t[1]}">${t[0]}</span>`; }
+                    function badgeAc(a) { const m = {BAN:['Yasak','red'],KICK:['Atma','yellow'],PURGE:['Temizlik','blue']}; const t=m[a]||[a,'blue']; return `<span class="badge ${t[1]}">${t[0]}</span>`; }
 
                     return `
                     <div style="background:#13131a;border:1px solid #1f1f2a;border-radius:16px;padding:24px">
@@ -1084,21 +1008,23 @@
                                 <span style="color:#80808a">🎭 Oto-Rol</span> ${durum(o.rol)}
                             </div>
                             <div style="background:#0a0a0f;border-radius:8px;padding:10px 14px;font-size:12px">
-                                <span style="color:#80808a">🎪 React-Rol</span> ${rr.rol_sayisi > 0 ? `<span class="badge green">${rr.rol_sayisi} rol</span>` : '<span class="badge red">Yok</span>'}
-                            </div>
-                            <div style="background:#0a0a0f;border-radius:8px;padding:10px 14px;font-size:12px">
                                 <span style="color:#80808a">🔊 Ses Odalari</span> ${durum(v.aktif)}
                             </div>
                             <div style="background:#0a0a0f;border-radius:8px;padding:10px 14px;font-size:12px">
                                 <span style="color:#80808a">✅ Dogrulama</span> ${durum(dg.aktif)}
                             </div>
                             <div style="background:#0a0a0f;border-radius:8px;padding:10px 14px;font-size:12px">
-                                <span style="color:#80808a">📸 Instagram</span> ${ig.hesap_sayisi > 0 ? `<span class="badge green">${ig.hesap_sayisi} hesap</span>` : '<span class="badge red">Yok</span>'}
-                                ${(ig.hesaplar||[]).map(h => `<div style="color:#585860;margin-top:2px">@${h.kullanici}${h.mesaj ? ' <span style="color:#57F287">✉</span>' : ''}</div>`).join('')}
+                                <span style="color:#80808a">🎫 Ticket</span> ${durum(tk.aktif)}
                             </div>
                             <div style="background:#0a0a0f;border-radius:8px;padding:10px 14px;font-size:12px">
-                                <span style="color:#80808a">⏺️ Kick Clips</span> ${g.kick_clips ? (g.kick_clips.kanal_sayisi > 0 ? `<span class="badge green">${g.kick_clips.kanal_sayisi} kanal</span>` : '<span class="badge red">Yok</span>') : '<span class="badge red">Yok</span>'}
-                                ${((g.kick_clips||{}).kanallar||[]).map(h => `<div style="color:#585860;margin-top:2px">${h.kick_kanal} <span style="color:#57F287">🎬</span></div>`).join('')}
+                                <span style="color:#80808a">🛡️ Antibot</span> ${durum(ab.aktif)}
+                            </div>
+                            <div style="background:#0a0a0f;border-radius:8px;padding:10px 14px;font-size:12px">
+                                <span style="color:#80808a">⚡ Oto Koruma</span> ${durum(ok.aktif)}
+                            </div>
+                            <div style="background:#0a0a0f;border-radius:8px;padding:10px 14px;font-size:12px">
+                                <span style="color:#80808a">📸 Instagram</span> ${ig.hesap_sayisi > 0 ? `<span class="badge green">${ig.hesap_sayisi} hesap</span>` : '<span class="badge red">Yok</span>'}
+                                ${(ig.hesaplar||[]).map(h => `<div style="color:#585860;margin-top:2px">@${h.kullanici}${h.mesaj ? ' <span style="color:#57F287">✉</span>' : ''}</div>`).join('')}
                             </div>
                         </div>
                         ${logs.length ? `

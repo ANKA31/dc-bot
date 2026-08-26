@@ -4,6 +4,7 @@ from discord import app_commands
 import json
 import os
 from datetime import datetime
+from utils_json import read_json, write_json
 
 LOG_TYPES = {
     "all": "Tüm Loglar",
@@ -111,30 +112,45 @@ class LogSistemi(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.settings_file = "log_settings.json"
+        self.invite_cache = {}
         self._init_settings()
+
+    async def cog_load(self):
+        for guild in self.bot.guilds:
+            await self._refresh_invites(guild)
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        for guild in self.bot.guilds:
+            await self._refresh_invites(guild)
+
+    async def _refresh_invites(self, guild):
+        try:
+            invites = await guild.invites()
+        except (discord.Forbidden, discord.HTTPException):
+            return []
+        self.invite_cache[guild.id] = {
+            invite.code: {
+                "uses": invite.uses or 0,
+                "max_uses": invite.max_uses or 0,
+                "inviter": invite.inviter,
+                "channel": invite.channel,
+            }
+            for invite in invites
+        }
+        return invites
 
     def _init_settings(self):
         if not os.path.exists(self.settings_file):
-            with open(self.settings_file, "w") as f:
-                json.dump({}, f)
+            write_json(self.settings_file, {})
 
     def _get_guild_settings(self, guild_id: int):
-        try:
-            with open(self.settings_file, "r") as f:
-                settings = json.load(f)
-            return settings.get(str(guild_id), {})
-        except:
-            return {}
+        return read_json(self.settings_file, {}).get(str(guild_id), {})
 
     def _save_guild_settings(self, guild_id: int, data: dict):
-        try:
-            with open(self.settings_file, "r") as f:
-                settings = json.load(f)
-        except:
-            settings = {}
+        settings = read_json(self.settings_file, {})
         settings[str(guild_id)] = data
-        with open(self.settings_file, "w") as f:
-            json.dump(settings, f, indent=4)
+        write_json(self.settings_file, settings)
 
     def _get_log_channel(self, guild_id: int, log_type: str):
         settings = self._get_guild_settings(guild_id)
@@ -154,12 +170,6 @@ class LogSistemi(commands.Cog):
                 await channel.send(embed=embed)
             except:
                 pass
-
-    @app_commands.command(name="testlog", description="Log sisteminin çalıştığını test et")
-    @app_commands.guild_only()
-    @app_commands.checks.has_permissions(administrator=True)
-    async def test_log(self, interaction: discord.Interaction):
-        await interaction.response.send_message("Log sistemi çalışıyor!", ephemeral=True)
 
     @app_commands.command(name="setlog", description="Log kanallarını ayarla (butonlu menü)")
     @app_commands.guild_only()
@@ -300,12 +310,27 @@ class LogSistemi(commands.Cog):
     async def on_member_join(self, member: discord.Member):
         if member.bot:
             return
+        previous = self.invite_cache.get(member.guild.id, {})
+        invites = await self._refresh_invites(member.guild)
+        used_invite = None
+        for invite in invites:
+            old_uses = previous.get(invite.code, {}).get("uses", 0)
+            if (invite.uses or 0) > old_uses:
+                used_invite = invite
+                break
         embed = discord.Embed(title="Üye Katıldı", description=f"{member.mention} sunucuya katıldı!", color=discord.Color.green(), timestamp=datetime.now())
         embed.set_author(name=member.display_name, icon_url=member.avatar.url if member.avatar else None)
         if member.avatar:
             embed.set_thumbnail(url=member.avatar.url)
         embed.add_field(name="Hesap Oluşturma", value=member.created_at.strftime("%d.%m.%Y %H:%M"), inline=True)
         embed.add_field(name="Üye Sayısı", value=f"{member.guild.member_count}", inline=True)
+        if used_invite:
+            inviter = used_invite.inviter.mention if used_invite.inviter else "Bilinmiyor"
+            embed.add_field(name="Kullanılan Davet", value=f"`{used_invite.code}`\nKanal: {used_invite.channel.mention if used_invite.channel else 'Bilinmiyor'}", inline=False)
+            embed.add_field(name="Davet Sahibi", value=inviter, inline=True)
+            embed.add_field(name="Kullanım", value=f"{used_invite.uses or 0}/{used_invite.max_uses or '∞'}", inline=True)
+        else:
+            embed.add_field(name="Davet Kaynağı", value="Belirlenemedi (yetki, vanity URL veya eşzamanlı kullanım)", inline=False)
         embed.set_footer(text=f"ID: {member.id} • {member.guild.name}")
         await self._send_log(member.guild.id, "member", embed)
 
@@ -561,6 +586,7 @@ class LogSistemi(commands.Cog):
             embed.set_author(name=invite.inviter.display_name, icon_url=invite.inviter.avatar.url if invite.inviter.avatar else None)
         embed.set_footer(text=f"ID: {invite.guild.id if invite.guild else '?'} • {invite.guild.name if invite.guild else '?'}")
         if invite.guild:
+            await self._refresh_invites(invite.guild)
             await self._send_log(invite.guild.id, "invite", embed)
 
     @commands.Cog.listener()
@@ -570,6 +596,7 @@ class LogSistemi(commands.Cog):
         embed.add_field(name="Davet Kodu", value=invite.code, inline=True)
         embed.set_footer(text=f"ID: {invite.guild.id if invite.guild else '?'}")
         if invite.guild:
+            await self._refresh_invites(invite.guild)
             await self._send_log(invite.guild.id, "invite", embed)
 
     @commands.Cog.listener()

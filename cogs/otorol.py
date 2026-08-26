@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
+from utils_json import read_json, write_json
 
 class OtoRolView(discord.ui.View):
     def __init__(self, cog, guild_id):
@@ -93,30 +94,19 @@ class OtoRol(commands.Cog):
 
     def _init_settings(self):
         if not os.path.exists(self.settings_file):
-            with open(self.settings_file, "w") as f:
-                json.dump({}, f)
+            write_json(self.settings_file, {})
 
     def _get_settings(self, guild_id):
         defaults = {"rol": None}
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-            gs = data.get(str(guild_id), {})
-            for k, v in defaults.items():
-                gs.setdefault(k, v)
-            return gs
-        except:
-            return defaults
+        gs = read_json(self.settings_file, {}).get(str(guild_id), {})
+        for k, v in defaults.items():
+            gs.setdefault(k, v)
+        return gs
 
     def _save_settings(self, guild_id, settings):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-        except:
-            data = {}
+        data = read_json(self.settings_file, {})
         data[str(guild_id)] = settings
-        with open(self.settings_file, "w") as f:
-            json.dump(data, f, indent=4)
+        write_json(self.settings_file, data)
 
     @app_commands.command(name="otorol", description="Oto-rol ayarlarını yönet")
     @app_commands.guild_only()

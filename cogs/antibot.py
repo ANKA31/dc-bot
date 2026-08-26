@@ -3,7 +3,10 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
+import time
+from collections import defaultdict, deque
 from datetime import datetime
+from utils_json import read_json, write_json
 
 class EsikModal(discord.ui.Modal, title="Ban Eşiği Ayarla"):
     def __init__(self, cog, guild_id):
@@ -91,6 +94,13 @@ class GuvenliEkleModal(discord.ui.Modal, title="Güvenli Bot Ekle"):
         try:
             s = self.cog._get_guild_settings(self.guild_id)
             bid = self.bot_id.value.strip()
+            if not bid.isdigit():
+                await interaction.response.send_message("Geçerli bir bot ID girin.", ephemeral=True)
+                return
+            member = interaction.guild.get_member(int(bid))
+            if member and not member.bot:
+                await interaction.response.send_message("Bu ID bir bota ait değil.", ephemeral=True)
+                return
             if bid in s.get("guvenli_botlar", []):
                 await interaction.response.send_message("Bu bot zaten güvenli listesinde.", ephemeral=True)
                 return
@@ -173,22 +183,17 @@ class AntibotView(discord.ui.View):
 class Antibot(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.bot_sayac = {}
+        self.bot_sayac = defaultdict(deque)
         self.settings_file = "antibot_settings.json"
         self._init_settings()
 
     def _init_settings(self):
         if not os.path.exists(self.settings_file):
-            with open(self.settings_file, "w") as f:
-                json.dump({}, f)
+            write_json(self.settings_file, {})
 
     def _get_guild_settings(self, guild_id: int):
         defaults = {"aktif": False, "esik": 6, "kanal_id": None, "guvenli_botlar": []}
-        try:
-            with open(self.settings_file, "r") as f:
-                settings = json.load(f)
-        except:
-            settings = {}
+        settings = read_json(self.settings_file, {})
         gid = str(guild_id)
         if gid not in settings:
             settings[gid] = defaults
@@ -198,14 +203,9 @@ class Antibot(commands.Cog):
         return settings[gid]
 
     def _save_guild_settings(self, guild_id: int, settings: dict):
-        try:
-            with open(self.settings_file, "r") as f:
-                all_settings = json.load(f)
-        except:
-            all_settings = {}
+        all_settings = read_json(self.settings_file, {})
         all_settings[str(guild_id)] = settings
-        with open(self.settings_file, "w") as f:
-            json.dump(all_settings, f, indent=4)
+        write_json(self.settings_file, all_settings)
 
     def _get_kanal(self, settings):
         kanal_id = settings.get("kanal_id")
@@ -299,9 +299,18 @@ class Antibot(commands.Cog):
         if not message.guild.me.guild_permissions.ban_members:
             return
 
-        bid = message.author.id
-        self.bot_sayac[bid] = self.bot_sayac.get(bid, 0) + 1
-        sayac = self.bot_sayac[bid]
+        if message.author.id == message.guild.owner_id:
+            return
+        if message.author.top_role >= message.guild.me.top_role:
+            return
+
+        key = (message.guild.id, message.author.id)
+        now = time.monotonic()
+        timestamps = self.bot_sayac[key]
+        while timestamps and now - timestamps[0] > 15:
+            timestamps.popleft()
+        timestamps.append(now)
+        sayac = len(timestamps)
 
         if sayac == 1:
             try:
@@ -328,7 +337,7 @@ class Antibot(commands.Cog):
             except:
                 pass
             finally:
-                self.bot_sayac.pop(bid, None)
+                self.bot_sayac.pop(key, None)
 
 async def setup(bot):
     await bot.add_cog(Antibot(bot))

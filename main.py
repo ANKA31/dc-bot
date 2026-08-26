@@ -28,7 +28,6 @@ bot = commands.Bot(
 )
 
 MEMBER_CACHE_FILE = "members_cache.json"
-WARNS_FILE = "warns_storage.json"
 MODLOGS_FILE = "modlogs.json"
 
 async def load_cogs():
@@ -65,28 +64,6 @@ async def guild_update_loop():
 async def before_guild_update():
     await bot.wait_until_ready()
 
-def init_warns():
-    data = _read_json(WARNS_FILE, {})
-    if not data:
-        _write_json(WARNS_FILE, {})
-        return
-    try:
-        for gid in list(data.keys()):
-            if isinstance(data[gid], list):
-                old = data.pop(gid)
-                data[gid] = {"next_id": 1, "users": {}}
-                for w in old:
-                    uid = w.get("user_id", "0")
-                    if uid not in data[gid]["users"]:
-                        data[gid]["users"][uid] = {"name": w.get("user_name", ""), "warns": [], "total_puan": 0}
-                    data[gid]["users"][uid]["warns"].append(w)
-                    data[gid]["users"][uid]["total_puan"] += 1
-                    if w.get("id", 0) >= data[gid]["next_id"]:
-                        data[gid]["next_id"] = w["id"] + 1
-        _write_json(WARNS_FILE, data)
-    except:
-        pass
-
 def init_modlogs():
     data = _read_json(MODLOGS_FILE, {})
     if not data:
@@ -102,39 +79,6 @@ def _modlog_ekle(guild_id, action, moderator, target, reason):
         "reason": reason, "timestamp": int(time.time())
     })
     _write_json(MODLOGS_FILE, logs)
-
-def _add_warn(guild_id: int, user_id: int, user_name: str, moderator: str, reason: str):
-    warns = _read_json(WARNS_FILE, {})
-    gid = str(guild_id)
-    if gid not in warns:
-        warns[gid] = {"next_id": 1, "users": {}}
-    uid = str(user_id)
-    if uid not in warns[gid]["users"]:
-        warns[gid]["users"][uid] = {"name": user_name, "warns": [], "total_puan": 0}
-    warns[gid]["users"][uid]["warns"].append({
-        "id": warns[gid]["next_id"], "moderator": moderator, "reason": reason,
-        "puan": 1, "timestamp": int(time.time()), "active": True
-    })
-    warns[gid]["users"][uid]["total_puan"] += 1
-    warns[gid]["next_id"] += 1
-    _write_json(WARNS_FILE, warns)
-    return warns[gid]["next_id"] - 1, warns[gid]["users"][uid]["total_puan"]
-
-def _remove_warn(guild_id: int, user_id: int, warn_id: int):
-    warns = _read_json(WARNS_FILE, {})
-    gid = str(guild_id)
-    removed = False
-    if gid in warns:
-        uid = str(user_id)
-        if uid in warns[gid]["users"]:
-            for w in warns[gid]["users"][uid]["warns"]:
-                if w["id"] == warn_id:
-                    w["active"] = False
-                    warns[gid]["users"][uid]["total_puan"] -= w.get("puan", 1)
-                    removed = True
-                    break
-            _write_json(WARNS_FILE, warns)
-    return removed
 
 @tasks.loop(seconds=60)
 async def member_cache_loop():
@@ -178,8 +122,9 @@ async def guild_sync_loop():
                 guild = bot.get_guild(int(gid))
                 if guild:
                     bot.tree.clear_commands(guild=guild)
+                    bot.tree.copy_global_to(guild=guild)
                     await bot.tree.sync(guild=guild)
-                    print(f"[SYNC] {guild.name} komutlari temizlendi.")
+                    print(f"[SYNC] {guild.name} komutlari guncellendi.")
             except Exception as e:
                 print(f"[SYNC] {gid} hatasi: {e}")
         with open(SYNC_FILE, "w") as f:
@@ -273,28 +218,6 @@ async def komut_kontrol_loop():
                             print(f"[WEB] Kick icin sunucu bulunamadi: {komut.get('guild_id')}")
                         processed.append(komut)
 
-                    elif cmd_type == "warn":
-                        guild_id_int = int(komut.get("guild_id"))
-                        user_id = int(komut.get("user_id"))
-                        user_name = komut.get("user_name", "Bilinmiyor")
-                        reason = komut.get("reason", "Web panel")
-                        mod_name = komut.get("moderator", "WebPanel")
-                        _add_warn(guild_id_int, user_id, user_name, mod_name, reason)
-                        _modlog_ekle(komut.get("guild_id"), "WARN", mod_name, user_name, reason)
-                        print(f"[WEB] {user_name} uyarildi: {reason}")
-                        processed.append(komut)
-
-                    elif cmd_type == "unwarn":
-                        guild_id_int = int(komut.get("guild_id"))
-                        user_id = int(komut.get("user_id"))
-                        warn_id = int(komut.get("warn_id"))
-                        mod_name = komut.get("moderator", "WebPanel")
-                        ok = _remove_warn(guild_id_int, user_id, warn_id)
-                        if ok:
-                            _modlog_ekle(komut.get("guild_id"), "UNWARN", mod_name, f"warn#{warn_id}", "Kaldirildi")
-                            print(f"[WEB] warn#{warn_id} kaldirildi")
-                        processed.append(komut)
-
                     else:
                         processed.append(komut)
                 except Exception as e:
@@ -325,11 +248,9 @@ async def on_ready():
         "invite_url": f"https://discord.com/api/oauth2/authorize?client_id={bot.user.id}&permissions=8&scope=bot%20applications.commands"
     })
 
-    init_warns()
-    guild_update_loop.start()
-    member_cache_loop.start()
-    komut_kontrol_loop.start()
-    guild_sync_loop.start()
+    for loop in (guild_update_loop, member_cache_loop, komut_kontrol_loop, guild_sync_loop):
+        if not loop.is_running():
+            loop.start()
 
     print("Komutlar senkronize ediliyor...")
     try:
@@ -357,18 +278,20 @@ async def on_guild_join(guild):
         description="Sunucunuza hoş geldiniz! Tüm komutlara `/` yazarak ulaşabilirsiniz.",
         color=discord.Color.blue()
     )
-    embed.add_field(name="🛡️ Moderasyon", value="`/ban` `/kick` `/warn` `/uyarılar` `/purge` `/lock` `/unlock` `/slowmode` `/embed`", inline=False)
+    embed.add_field(name="🛡️ Moderasyon", value="`/ban` `/kick` `/purge` `/embed`", inline=False)
     embed.add_field(name="🎫 Ticket", value="`/ticket` `/ticket-yetkili` `/ticket-log`", inline=False)
     embed.add_field(name="🤖 Antibot", value="`/antibot`", inline=False)
-    embed.add_field(name="⚡ Oto-Koruma", value="`/otokoruma` `/automod-setup` `/automod-kurallar`", inline=False)
-    embed.add_field(name="📝 Log", value="`/setlog` `/logayarlari` `/testlog`", inline=False)
+    embed.add_field(name="⚡ Oto-Koruma", value="`/otokoruma` `/automod-setup` `/automod-kurallar` `/automod-stats`", inline=False)
+    embed.add_field(name="📝 Log", value="`/setlog` `/logayarlari`", inline=False)
     embed.add_field(name="👋 Karşılama", value="`/karsilama`", inline=False)
-    embed.add_field(name="🎭 Roller", value="`/otorol` `/rol-paneli`", inline=False)
+    embed.add_field(name="🎭 Roller", value="`/otorol`", inline=False)
     embed.add_field(name="🔊 Ses Odaları", value="`/sesoda`", inline=False)
+    embed.add_field(name="🎵 Müzik", value="`/music`", inline=False)
     embed.add_field(name="🎉 Çekiliş", value="`/giveaway`", inline=False)
     embed.add_field(name="📊 Anket", value="`/anket`", inline=False)
-    embed.add_field(name="🌐 Sosyal Medya", value="`/instagram` `/testinstagram` `/dil`", inline=False)
+    embed.add_field(name="🌐 Sosyal Medya", value="`/instagram` `/testinstagram` `/instagram-sil`", inline=False)
     embed.add_field(name="✅ Doğrulama", value="`/dogrulama`", inline=False)
+    embed.add_field(name="✨ Özel Komutlar", value="`/komutekle` `/komutsil` `/komutlistesi`", inline=False)
     embed.add_field(name="ℹ️ Bilgi / 🎮 Eğlence", value="`/userinfo` `/serverinfo` `/help` `/yazı-tura` `/zar` `/espri` `/avatar` `/ping`", inline=False)
 
     try:
@@ -376,6 +299,18 @@ async def on_guild_join(guild):
             await guild.system_channel.send(embed=embed)
     except:
         pass
+
+@bot.event
+async def on_disconnect():
+    status = _read_json("bot_status.json", {})
+    status["status"] = "offline"
+    _write_json("bot_status.json", status)
+
+@bot.event
+async def on_app_command_completion(interaction: discord.Interaction, command):
+    status = _read_json("bot_status.json", {})
+    status["commands_used"] = int(status.get("commands_used", 0)) + 1
+    _write_json("bot_status.json", status)
 
 @bot.event
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):

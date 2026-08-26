@@ -5,6 +5,7 @@ import urllib.request
 import json
 import os
 import asyncio
+from utils_json import read_json, write_json
 
 class Instagram(commands.Cog):
     def __init__(self, bot):
@@ -15,20 +16,13 @@ class Instagram(commands.Cog):
 
     def _init_settings(self):
         if not os.path.exists(self.settings_file):
-            with open(self.settings_file, "w") as f:
-                json.dump({}, f)
+            write_json(self.settings_file, {})
 
     def _get_settings(self, guild_id):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-            return data.get(str(guild_id), {"hesaplar": []})
-        except:
-            return {"hesaplar": []}
+        return read_json(self.settings_file, {}).get(str(guild_id), {"hesaplar": []})
 
     def _save_all(self, data):
-        with open(self.settings_file, "w") as f:
-            json.dump(data, f, indent=4)
+        write_json(self.settings_file, data)
 
     async def _fetch_son_paylasim(self, kullanici):
         return await asyncio.to_thread(self._fetch_son_paylasim_sync, kullanici)
@@ -136,12 +130,7 @@ class Instagram(commands.Cog):
             yeni["mesaj"] = mesaj
         hesaplar.append(yeni)
         settings["hesaplar"] = hesaplar
-        all_data = {}
-        try:
-            with open(self.settings_file, "r") as f:
-                all_data = json.load(f)
-        except:
-            pass
+        all_data = read_json(self.settings_file, {})
         all_data[str(interaction.guild.id)] = settings
         self._save_all(all_data)
 
@@ -213,11 +202,7 @@ class Instagram(commands.Cog):
         await interaction.response.send_message("Bu kullanici takip edilmiyor.")
 
     def _get_all(self):
-        try:
-            with open(self.settings_file, "r") as f:
-                return json.load(f)
-        except:
-            return {}
+        return read_json(self.settings_file, {})
 
     @tasks.loop(minutes=5)
     async def check_instagram(self):

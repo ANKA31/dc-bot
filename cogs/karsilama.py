@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
+from utils_json import read_json, write_json
 
 class Karsilama(commands.Cog):
     def __init__(self, bot):
@@ -12,32 +13,22 @@ class Karsilama(commands.Cog):
 
     def _init_settings(self):
         if not os.path.exists(self.settings_file):
-            with open(self.settings_file, "w") as f:
-                json.dump({}, f)
+            write_json(self.settings_file, {})
 
     def _get_settings(self, guild_id):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-            return data.get(str(guild_id), {})
-        except:
-            return {}
+        return read_json(self.settings_file, {}).get(str(guild_id), {})
 
     def _save_settings(self, guild_id, settings):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-        except:
-            data = {}
+        data = read_json(self.settings_file, {})
         data[str(guild_id)] = settings
-        with open(self.settings_file, "w") as f:
-            json.dump(data, f, indent=4)
+        write_json(self.settings_file, data)
 
     @app_commands.command(name="karsilama", description="Karsilama/ayrilma mesaji ayarlari")
     @app_commands.describe(
         kanal="Mesajlarin gonderilecegi kanal",
-        hosgeldin="Hos geldin mesaji ({user}, {server}, {sayi})",
-        gulegule="Gule gule mesaji ({user}, {server})"
+        hosgeldin="Hos geldin mesaji ({user}, {mention}, {server}, {sayi})",
+        gulegule="Gule gule mesaji ({user}, {mention}, {server}, {sayi})",
+        kapat="Karşılama ve uğurlama mesajlarını kapat"
     )
     @app_commands.guild_only()
     @app_commands.checks.has_permissions(administrator=True)
@@ -46,18 +37,30 @@ class Karsilama(commands.Cog):
         interaction: discord.Interaction,
         kanal: discord.TextChannel = None,
         hosgeldin: str = None,
-        gulegule: str = None
+        gulegule: str = None,
+        kapat: bool = False
     ):
         settings = self._get_settings(interaction.guild.id)
         degisti = []
+
+        if kapat:
+            self._save_settings(interaction.guild.id, {})
+            await interaction.response.send_message("Karşılama ve uğurlama mesajları kapatıldı.", ephemeral=True)
+            return
 
         if kanal:
             settings["kanal"] = str(kanal.id)
             degisti.append(f"Kanal: {kanal.mention}")
         if hosgeldin:
+            if len(hosgeldin) > 2000:
+                await interaction.response.send_message("Hoş geldin mesajı 2000 karakteri geçemez.", ephemeral=True)
+                return
             settings["hosgeldin"] = hosgeldin
             degisti.append("Hos geldin mesaji ayarlandi")
         if gulegule:
+            if len(gulegule) > 2000:
+                await interaction.response.send_message("Güle güle mesajı 2000 karakteri geçemez.", ephemeral=True)
+                return
             settings["gulegule"] = gulegule
             degisti.append("Gule gule mesaji ayarlandi")
 
@@ -90,9 +93,9 @@ class Karsilama(commands.Cog):
         kanal = member.guild.get_channel(int(kanal_id))
         if not isinstance(kanal, discord.TextChannel):
             return
-        mesaj = mesaj.replace("{user}", member.mention).replace("{server}", member.guild.name).replace("{sayi}", str(member.guild.member_count))
+        mesaj = mesaj.replace("{user}", member.display_name).replace("{mention}", member.mention).replace("{server}", member.guild.name).replace("{sayi}", str(member.guild.member_count)).replace("{id}", str(member.id))
         try:
-            await kanal.send(mesaj)
+            await kanal.send(mesaj, allowed_mentions=discord.AllowedMentions.none())
         except:
             pass
 
@@ -108,9 +111,9 @@ class Karsilama(commands.Cog):
         kanal = member.guild.get_channel(int(kanal_id))
         if not isinstance(kanal, discord.TextChannel):
             return
-        mesaj = mesaj.replace("{user}", member.mention).replace("{server}", member.guild.name)
+        mesaj = mesaj.replace("{user}", member.display_name).replace("{mention}", member.mention).replace("{server}", member.guild.name).replace("{sayi}", str(member.guild.member_count)).replace("{id}", str(member.id))
         try:
-            await kanal.send(mesaj)
+            await kanal.send(mesaj, allowed_mentions=discord.AllowedMentions.none())
         except:
             pass
 

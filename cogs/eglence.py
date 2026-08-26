@@ -7,7 +7,7 @@ class Eglence(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="yazı-tura", description="Yazı tura at")
+    @app_commands.command(name="yazi-tura", description="Yazi veya tura at")
     async def yazi_tura(self, interaction: discord.Interaction):
         sonuc = random.choice(["Yazı", "Tura"])
         embed = discord.Embed(title="🪙 Yazı Tura", description=f"**{sonuc}**!", color=discord.Color.gold())
@@ -22,19 +22,29 @@ class Eglence(commands.Cog):
         embed.set_footer(text=interaction.user.name, icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="espri", description="Rastgele bir espri yap")
+    @app_commands.command(name="espri", description="Türkçe ve global esprilerden rastgele birini gösterir")
     async def espri(self, interaction: discord.Interaction):
         espriler = [
-            "Seninle CSS kodlamak çok zor, çünkü sürekli display: none; yapıyorsun.",
-            "DOM'a sordum 'Neden bu kadar yavaşsın?' dedi 'Çünkü her şeyi kaldıramıyorum!'",
-            "Bir React geliştiricisi çok üzgünmüş, çünkü state'ini kaybetmiş.",
-            "Programcılar kahveyi neden sever? Çünkü onsuz da çalışırlar ama exception fırlatırlar.",
-            "Bir SQL sorgusu bara girmiş, 2 masa birleştirip geri dönmüş.",
-            "Neden Python yılanları web geliştiricisi olmuş? Çünkü çok iyi framework'leri varmış! (Django, Flask)",
-            "Git ile ilgili sorunum yok, sadece branch'lerimden şüpheleniyorum.",
-            "Algoritma dediğin nedir ki? Hayatın ta kendisi: adım adım ilerle, takılma, devam et!",
-            "Beni syntax error olarak görme, ben sadece farklı bir statement'ım.",
-            "Full-stack geliştirici bara girmiş, backend'i yapmış ama frontend'i gösterememiş.",
+            "Seninle CSS kodlamak zor; ne zaman yaklaşsam display: none oluyorsun.",
+            "React geliştiricisi neden üzgünmüş? State'ini kaybetmiş.",
+            "Programcı kahveyi neden sever? Çünkü kahve yoksa exception fırlatır.",
+            "SQL sorgusu bara girmiş, iki masayı join edip dönmüş.",
+            "Git ile aram iyi ama branch'lerim biraz dallı budaklı.",
+            "Python yılan değilmiş; sadece indentation konusunda çok hassasmış.",
+            "Bugün çok üretkendim. Üretkenlik uygulamasını açıp kapattım.",
+            "Bilgisayarım çok soğuk. Pencereleri açık kalmış.",
+            "Klavye neden doktora gitmiş? Tuşları ağrıyormuş.",
+            "Wi-Fi şifresini sordum, 'önce çalış' dedi.",
+            "Türk kahvesi neden kod yazamaz? Her satırın sonunda telvesi kalır.",
+            "Temel Reis ıspanağı neden seviyormuş? Çünkü spinach ile güçleniyormuş.",
+            "Dün elektrikçiye gittim, akımı yokmuş.",
+            "Matematik kitabı neden ağlıyormuş? Çok problemi varmış.",
+            "Adamın biri gülmüş, bahçeye dikmişler.",
+            "Geçen gün taksi çevirdim, hâlâ dönüyor.",
+            "Fıkra anlatacaktım ama sonunu getiremedim; konu dağıldı.",
+            "Bir dosya diğerine ne demiş? Uzantımızı koparmayalım.",
+            "JavaScript neden terapiste gitmiş? Çok fazla callback'i varmış.",
+            "Bir HTTP isteği bara girmiş: 'Bana bir 200 ver.' demiş.",
         ]
         embed = discord.Embed(title="😂 Espri", description=random.choice(espriler), color=discord.Color.gold())
         await interaction.response.send_message(embed=embed)

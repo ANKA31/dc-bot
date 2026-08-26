@@ -13,17 +13,18 @@ def _resolve(path):
     return path
 
 def read_json(path, default=None):
-    lock = _locks.setdefault(path, threading.Lock())
+    resolved = _resolve(path)
+    lock = _locks.setdefault(os.path.abspath(resolved), threading.Lock())
     with lock:
         try:
-            with open(_resolve(path), "r", encoding="utf-8") as f:
+            with open(resolved, "r", encoding="utf-8") as f:
                 return json.load(f)
         except:
             return default if default is not None else {}
 
 def write_json(path, data):
-    lock = _locks.setdefault(path, threading.Lock())
     resolved = _resolve(path)
+    lock = _locks.setdefault(os.path.abspath(resolved), threading.Lock())
     os.makedirs(os.path.dirname(resolved) or ".", exist_ok=True)
     with lock:
         tmp = resolved + ".tmp"

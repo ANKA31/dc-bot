@@ -5,31 +5,35 @@ from datetime import datetime
 
 KATEGORILER = {
     "moderasyon": {"emoji": "🛡️", "name": "Moderasyon", "desc": "Sunucu moderasyon komutları",
-        "cmds": ["`/ban`", "`/kick`", "`/warn`", "`/uyarılar`", "`/purge`", "`/lock`", "`/unlock`", "`/slowmode`", "`/embed`"]},
+        "cmds": ["`/ban`", "`/kick`", "`/purge`", "`/embed`"]},
     "ticket": {"emoji": "🎫", "name": "Ticket", "desc": "Destek ticket sistemi",
         "cmds": ["`/ticket`", "`/ticket-yetkili`", "`/ticket-log`"]},
     "koruma": {"emoji": "🛡️", "name": "Koruma", "desc": "Bot koruma ve otomatik moderasyon",
-        "cmds": ["`/antibot`", "`/otokoruma`", "`/automod-setup`", "`/automod-kurallar`"]},
+        "cmds": ["`/antibot`", "`/otokoruma`", "`/automod-setup`", "`/automod-kurallar`", "`/automod-stats`"]},
     "log": {"emoji": "📝", "name": "Log", "desc": "Sunucu log sistemi",
-        "cmds": ["`/setlog`", "`/logayarlari`", "`/testlog`"]},
+        "cmds": ["`/setlog`", "`/logayarlari`"]},
     "karsilama": {"emoji": "👋", "name": "Karşılama", "desc": "Karşılama/uğurlama mesajları",
         "cmds": ["`/karsilama`"]},
     "rol": {"emoji": "🎭", "name": "Roller", "desc": "Oto-rol ve reaksiyon rolleri",
-        "cmds": ["`/otorol`", "`/rol-paneli`"]},
+        "cmds": ["`/otorol`"]},
     "ses": {"emoji": "🔊", "name": "Ses Odaları", "desc": "Geçici ses odaları",
         "cmds": ["`/sesoda`"]},
+    "music": {"emoji": "🎵", "name": "Müzik", "desc": "Ses kanalında müzik oynat",
+        "cmds": ["`/music`"]},
     "cekilis": {"emoji": "🎉", "name": "Çekiliş", "desc": "Çekiliş sistemi",
         "cmds": ["`/giveaway`"]},
     "anket": {"emoji": "📊", "name": "Anket", "desc": "Oylama anketleri",
         "cmds": ["`/anket`"]},
     "sosyal": {"emoji": "🌐", "name": "Sosyal Medya", "desc": "Sosyal medya takip",
-        "cmds": ["`/instagram`", "`/testinstagram`", "`/dil`"]},
+        "cmds": ["`/instagram`", "`/testinstagram`", "`/instagram-sil`"]},
     "dogrulama": {"emoji": "✅", "name": "Doğrulama", "desc": "Üye doğrulama sistemi",
         "cmds": ["`/dogrulama`"]},
     "bilgi": {"emoji": "ℹ️", "name": "Bilgi", "desc": "Bilgi komutları",
         "cmds": ["`/userinfo`", "`/serverinfo`", "`/help`"]},
     "eglence": {"emoji": "🎮", "name": "Eğlence", "desc": "Eğlence komutları",
-        "cmds": ["`/yazı-tura`", "`/zar`", "`/espri`", "`/avatar`", "`/ping`"]},
+        "cmds": ["`/yazi-tura`", "`/zar`", "`/espri`", "`/avatar`", "`/ping`"]},
+    "ozel": {"emoji": "✨", "name": "Özel Komutlar", "desc": "Sunucuya özel ! komutları",
+        "cmds": ["`/komutekle`", "`/komutsil`", "`/komutlistesi`"]},
 }
 
 class HelpView(discord.ui.View):
@@ -69,12 +73,12 @@ class Bilgi(commands.Cog):
         self.bot = bot
 
     @app_commands.command(name="userinfo", description="Kullanıcı bilgisini göster")
-    @app_commands.describe(kullanıcı="Bilgisi gösterilecek kullanıcı (opsiyonel)")
+    @app_commands.describe(kullanici="Bilgisi gösterilecek kullanıcı (opsiyonel)")
     @app_commands.guild_only()
-    async def kullanıcıinfo(self, interaction: discord.Interaction, kullanıcı: discord.Member = None):
+    async def kullanıcıinfo(self, interaction: discord.Interaction, kullanici: discord.Member = None):
         await interaction.response.defer()
         try:
-            target_user = kullanıcı or interaction.user
+            target_user = kullanici or interaction.user
             if target_user.id in [m.id for m in interaction.guild.members]:
                 user = interaction.guild.get_member(target_user.id)
             else:

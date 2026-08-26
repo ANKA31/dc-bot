@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
+from utils_json import read_json, write_json
 
 class LimitModal(discord.ui.Modal, title="Kullanıcı Sınırı"):
     def __init__(self, channel):
@@ -132,7 +133,7 @@ class OdaKontrolView(discord.ui.View):
             await kanal.delete(reason="Oda sahibi sildi")
         except:
             pass
-        self.cog.user_channels.pop(self.owner_id, None)
+        self.cog.user_channels.pop((interaction.guild.id, self.owner_id), None)
 
 class VoiceChannels(commands.Cog):
     def __init__(self, bot):
@@ -141,22 +142,12 @@ class VoiceChannels(commands.Cog):
         self.user_channels = {}
 
     def _get_settings(self, guild_id):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-            return data.get(str(guild_id), {})
-        except:
-            return {}
+        return read_json(self.settings_file, {}).get(str(guild_id), {})
 
     def _save_settings(self, guild_id, settings):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-        except:
-            data = {}
+        data = read_json(self.settings_file, {})
         data[str(guild_id)] = settings
-        with open(self.settings_file, "w") as f:
-            json.dump(data, f, indent=4)
+        write_json(self.settings_file, data)
 
     @app_commands.command(name="sesoda", description="Ses odaları sistemini kur")
     @app_commands.describe(
@@ -246,6 +237,7 @@ class VoiceChannels(commands.Cog):
             except:
                 kategori = None
 
+        channel_key = (member.guild.id, member.id)
         if before.channel and before.channel.id in self.user_channels.values():
             oda = before.channel
             if len(oda.members) == 0:
@@ -264,8 +256,8 @@ class VoiceChannels(commands.Cog):
                     print(f"[SES] Silme hatası: {e}")
 
         if after.channel and after.channel.id == giris_kanal_id:
-            if member.id in self.user_channels:
-                onceki = member.guild.get_channel(self.user_channels[member.id])
+            if channel_key in self.user_channels:
+                onceki = member.guild.get_channel(self.user_channels[channel_key])
                 if onceki:
                     try:
                         await member.move_to(onceki)
@@ -291,7 +283,7 @@ class VoiceChannels(commands.Cog):
                 yeni_oda = await member.guild.create_voice_channel(
                     name=oda_adi, category=kategori
                 )
-                self.user_channels[member.id] = yeni_oda.id
+                self.user_channels[channel_key] = yeni_oda.id
 
                 if izin_aktif:
                     await yeni_oda.set_permissions(member.guild.default_role, connect=False)
@@ -315,10 +307,10 @@ class VoiceChannels(commands.Cog):
 
             except discord.HTTPException as e:
                 print(f"[SES] Oluşturma hatası: {e}")
-                self.user_channels.pop(member.id, None)
+                self.user_channels.pop(channel_key, None)
             except Exception as e:
                 print(f"[SES] Hata: {e}")
-                self.user_channels.pop(member.id, None)
+                self.user_channels.pop(channel_key, None)
 
 async def setup(bot):
     await bot.add_cog(VoiceChannels(bot))

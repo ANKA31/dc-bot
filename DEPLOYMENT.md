@@ -1,4 +1,4 @@
-# Railway Deploy Dosyası
+# Render Deploy Dosyası
 
 Tüm dosyalara bu klasör içinde bulunmalıdır:
 
@@ -9,21 +9,19 @@ dc bot/
 ├── config.py
 ├── cogs/
 │   ├── __init__.py
-│   └── moderasyon.py
+│   └── ... (tüm cog modülleri)
 ├── templates/
-│   └── index.html
-├── static/
-│   ├── style.css
-│   └── script.js
+│   └── dashboard.html
 ├── requirements.txt
-├── Procfile              ← İmportant
-├── runtime.txt           ← İmportant
+├── Procfile
+├── render.yaml
+├── runtime.txt
 ├── .env.example
 ├── .gitignore
 └── modlogs.json          (Otomatik oluşturulur)
 ```
 
-## Railway Kurulum Adımları
+## Render Kurulum Adımları
 
 ### 1. GitHub'a Push Et
 ```bash
@@ -32,23 +30,23 @@ git commit -m "rootv1 Discord Bot + Admin Dashboard"
 git push origin main
 ```
 
-### 2. Railway'e Git
-https://railway.app → "New Project" → "Deploy from GitHub"
+### 2. Render'a Git
+https://render.com → "New" → "Blueprint"
 
 ### 3. Repository Seç
 Botunun olduğu repository'i seç
 
 ### 4. Environment Variables Ekle
-Railway Dashboard → "Variables" → Ekle:
+Render Dashboard → "Environment" bölümüne ekle:
 ```
 DISCORD_TOKEN=YENİ_TOKEN_BURAYA_GEL
 ```
 
 ### 5. Deploy!
-Railway otomatik deploy eder → 2-3 dakika
+Render otomatik deploy eder → 2-3 dakika
 
 ## URL'ler
-- **Web Dashboard:** `https://your-app.railway.app`
+- **Web Dashboard:** `https://your-app.onrender.com`
 - **Bot:** Arka planda 24/7 çalışıyor
 
 ## Local Test (Railway'den Önce)

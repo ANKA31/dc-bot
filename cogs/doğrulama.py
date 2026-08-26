@@ -6,6 +6,7 @@ import os
 import random
 import time
 import asyncio
+from utils_json import read_json, write_json
 
 class DogrulamaView(discord.ui.View):
     def __init__(self, cog):
@@ -30,7 +31,7 @@ class DogrulamaView(discord.ui.View):
         sayi1 = random.randint(1, 20)
         sayi2 = random.randint(1, 20)
         cevap = sayi1 + sayi2
-        self.cog.captcha_data[interaction.user.id] = {"answer": cevap, "attempts": 0, "time": time.time()}
+        self.cog.captcha_data[(interaction.guild.id, interaction.user.id)] = {"answer": cevap, "attempts": 0, "time": time.time()}
 
         modal = DogrulamaModal(self.cog, sayi1, sayi2)
         await interaction.response.send_modal(modal)
@@ -53,13 +54,14 @@ class DogrulamaModal(discord.ui.Modal, title="Doğrulama"):
         self.add_item(self.soru)
 
     async def on_submit(self, interaction: discord.Interaction):
-        data = self.cog.captcha_data.get(interaction.user.id)
+        key = (interaction.guild.id, interaction.user.id)
+        data = self.cog.captcha_data.get(key)
         if not data:
             await interaction.response.send_message("Süre doldu veya oturum geçersiz. Tekrar dene.", ephemeral=True)
             return
 
         if time.time() - data["time"] > 120:
-            del self.cog.captcha_data[interaction.user.id]
+            del self.cog.captcha_data[key]
             await interaction.response.send_message("Süre doldu! Lütfen butona tekrar bas.", ephemeral=True)
             return
 
@@ -68,7 +70,7 @@ class DogrulamaModal(discord.ui.Modal, title="Doğrulama"):
         except ValueError:
             data["attempts"] += 1
             if data["attempts"] >= 3:
-                del self.cog.captcha_data[interaction.user.id]
+                del self.cog.captcha_data[key]
                 await interaction.response.send_message("Çok fazla hatalı giriş! Butona tekrar basarak yeniden dene.", ephemeral=True)
                 return
             await interaction.response.send_message("Geçersiz sayı! Lütfen bir sayı gir.", ephemeral=True)
@@ -80,16 +82,22 @@ class DogrulamaModal(discord.ui.Modal, title="Doğrulama"):
             kayitsiz_id = settings.get("kayitsiz_rol")
             kayit_kanal_id = settings.get("kayit_kanal")
 
+            if not interaction.guild.me.guild_permissions.manage_roles:
+                await interaction.response.send_message("Botun rol yönetme yetkisi yok.", ephemeral=True)
+                return
             if uye_rol_id:
                 uye_rol = interaction.guild.get_role(int(uye_rol_id))
                 if uye_rol:
+                    if uye_rol >= interaction.guild.me.top_role:
+                        await interaction.response.send_message("Üye rolü botun en üst rolünün altında olmalı.", ephemeral=True)
+                        return
                     await interaction.user.add_roles(uye_rol)
             if kayitsiz_id:
                 kayitsiz_rol = interaction.guild.get_role(int(kayitsiz_id))
                 if kayitsiz_rol and kayitsiz_rol in interaction.user.roles:
                     await interaction.user.remove_roles(kayitsiz_rol)
 
-            del self.cog.captcha_data[interaction.user.id]
+            del self.cog.captcha_data[key]
 
             self.cog._log_dogrulama(interaction.guild.id, interaction.guild.name, interaction.user.id, str(interaction.user), interaction.user.display_name)
 
@@ -114,7 +122,7 @@ class DogrulamaModal(discord.ui.Modal, title="Doğrulama"):
             data["attempts"] += 1
             kalan = 3 - data["attempts"]
             if data["attempts"] >= 3:
-                del self.cog.captcha_data[interaction.user.id]
+                del self.cog.captcha_data[key]
                 await interaction.response.send_message("Çok fazla hatalı giriş! Butona tekrar basarak yeniden dene.", ephemeral=True)
             else:
                 await interaction.response.send_message(f"Yanlış cevap! Kalan hakkın: {kalan}", ephemeral=True)
@@ -129,26 +137,15 @@ class Dogrulama(commands.Cog):
 
     def _init_settings(self):
         if not os.path.exists(self.settings_file):
-            with open(self.settings_file, "w") as f:
-                json.dump({}, f)
+            write_json(self.settings_file, {})
 
     def _get_settings(self, guild_id):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-            return data.get(str(guild_id), {})
-        except:
-            return {}
+        return read_json(self.settings_file, {}).get(str(guild_id), {})
 
     def _save_settings(self, guild_id, settings):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-        except:
-            data = {}
+        data = read_json(self.settings_file, {})
         data[str(guild_id)] = settings
-        with open(self.settings_file, "w") as f:
-            json.dump(data, f, indent=4)
+        write_json(self.settings_file, data)
 
     async def cog_load(self):
         self.bot.add_view(DogrulamaView(self))
@@ -168,10 +165,7 @@ class Dogrulama(commands.Cog):
     def _log_dogrulama(self, guild_id, guild_name, user_id, user_tag, display_name):
         try:
             log_file = "dogrulama_logs.json"
-            logs = []
-            if os.path.exists(log_file):
-                with open(log_file, "r") as f:
-                    logs = json.load(f)
+            logs = read_json(log_file, [])
             logs.append({
                 "guild_id": str(guild_id),
                 "guild_name": guild_name,
@@ -181,8 +175,7 @@ class Dogrulama(commands.Cog):
                 "timestamp": int(time.time())
             })
             logs = logs[-100:]
-            with open(log_file, "w") as f:
-                json.dump(logs, f, indent=4)
+            write_json(log_file, logs)
         except:
             pass
 
@@ -242,18 +235,40 @@ class Dogrulama(commands.Cog):
         degisti = []
 
         if kayitsiz_rol:
+            try:
+                rol = interaction.guild.get_role(int(kayitsiz_rol))
+            except (TypeError, ValueError):
+                rol = None
+            if not rol or rol.is_default() or rol >= interaction.guild.me.top_role:
+                await interaction.response.send_message("Geçerli ve bot rolünün altında bir kayıtsız rol seçin.", ephemeral=True)
+                return
             settings["kayitsiz_rol"] = kayitsiz_rol
             r = interaction.guild.get_role(int(kayitsiz_rol))
             degisti.append(f"Kayitsiz rol: {r.mention if r else kayitsiz_rol}")
         if uye_rol:
+            try:
+                rol = interaction.guild.get_role(int(uye_rol))
+            except (TypeError, ValueError):
+                rol = None
+            if not rol or rol.is_default() or rol >= interaction.guild.me.top_role:
+                await interaction.response.send_message("Geçerli ve bot rolünün altında bir üye rolü seçin.", ephemeral=True)
+                return
             settings["uye_rol"] = uye_rol
             r = interaction.guild.get_role(int(uye_rol))
             degisti.append(f"Üye rol: {r.mention if r else uye_rol}")
         if kayit_kanal:
+            kanal_obj = interaction.guild.get_channel(int(kayit_kanal))
+            if not isinstance(kanal_obj, discord.TextChannel):
+                await interaction.response.send_message("Kayıt log kanalı bir yazı kanalı olmalı.", ephemeral=True)
+                return
             settings["kayit_kanal"] = kayit_kanal
             k = interaction.guild.get_channel(int(kayit_kanal))
             degisti.append(f"Kayit kanal: {k.mention if k else kayit_kanal}")
         if dogrulama_kanal:
+            kanal_obj = interaction.guild.get_channel(int(dogrulama_kanal))
+            if not isinstance(kanal_obj, discord.TextChannel):
+                await interaction.response.send_message("Doğrulama kanalı bir yazı kanalı olmalı.", ephemeral=True)
+                return
             settings["dogrulama_kanal"] = dogrulama_kanal
             k = interaction.guild.get_channel(int(dogrulama_kanal))
             degisti.append(f"Dogrulama kanal: {k.mention if k else dogrulama_kanal}")

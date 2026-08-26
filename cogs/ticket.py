@@ -4,6 +4,7 @@ from discord import app_commands
 import json
 import os
 from datetime import datetime
+from utils_json import read_json, write_json
 
 class TicketView(discord.ui.View):
     def __init__(self, bot):
@@ -15,7 +16,7 @@ class TicketView(discord.ui.View):
         guild = interaction.guild
         settings = TicketSistemi._get_settings(guild.id)
 
-        existing = discord.utils.get(guild.channels, name=f"ticket-{interaction.user.name.lower()}")
+        existing = discord.utils.get(guild.channels, name=f"ticket-{interaction.user.id}")
         if existing:
             await interaction.response.send_message("Zaten açık bir ticket kanalın var!", ephemeral=True)
             return
@@ -43,7 +44,7 @@ class TicketView(discord.ui.View):
                 overwrites[rol] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
 
         channel = await guild.create_text_channel(
-            name=f"ticket-{user.name.lower()}",
+            name=f"ticket-{user.id}",
             category=kategori,
             overwrites=overwrites
         )
@@ -83,12 +84,14 @@ class TicketKapatView(discord.ui.View):
 
     @discord.ui.button(label="Ticket Kapat", style=discord.ButtonStyle.red, emoji="🔒", custom_id="ticket_kapat")
     async def ticket_kapat(self, interaction: discord.Interaction, button: discord.ui.Button):
-        settings = TicketSistemi._get_settings(self.guild_id)
+        settings = TicketSistemi._get_settings(interaction.guild.id)
         yetkililer = settings.get("yetkililer", [])
         user_roles = [str(r.id) for r in interaction.user.roles]
         is_admin = interaction.user.guild_permissions.administrator
 
-        if not is_admin and not any(r in yetkililer for r in user_roles):
+        owner_overwrite = interaction.channel.overwrites_for(interaction.user)
+        is_owner = owner_overwrite.view_channel is True
+        if not is_admin and not is_owner and not any(r in yetkililer for r in user_roles):
             yetkili_rol_mention = ""
             for rol_id in yetkililer:
                 rol = interaction.guild.get_role(int(rol_id))
@@ -138,15 +141,11 @@ class TicketSistemi(commands.Cog):
 
     def _init_settings(self):
         if not os.path.exists(self.settings_file):
-            with open(self.settings_file, "w") as f:
-                json.dump({}, f)
+            write_json(self.settings_file, {})
 
     async def cog_load(self):
-        try:
-            with open(self.settings_file, "r") as f:
-                data = json.load(f)
-        except:
-            return
+        self.bot.add_view(TicketKapatView(None, self.bot))
+        data = read_json(self.settings_file, {})
         for gid, settings in data.items():
             kanal_id = settings.get("kanal_id")
             if kanal_id:
@@ -155,25 +154,16 @@ class TicketSistemi(commands.Cog):
 
     @staticmethod
     def _get_settings(guild_id: int):
-        try:
-            with open("ticket_settings.json", "r") as f:
-                all_settings = json.load(f)
-        except:
-            all_settings = {}
+        all_settings = read_json("ticket_settings.json", {})
         gid = str(guild_id)
         if gid not in all_settings:
-            all_settings[gid] = {"kanal_id": None, "kategori_id": None, "yetkililer": [], "log_kanal_id": None}
+            all_settings[gid] = {"kanal_id": None, "kategori_id": None, "yetkililer": [], "log_kanal_id": None, "panel_mesaj_id": None}
         return all_settings[gid]
 
     def _save_settings(self, guild_id: int, settings: dict):
-        try:
-            with open(self.settings_file, "r") as f:
-                all_settings = json.load(f)
-        except:
-            all_settings = {}
+        all_settings = read_json(self.settings_file, {})
         all_settings[str(guild_id)] = settings
-        with open(self.settings_file, "w") as f:
-            json.dump(all_settings, f, indent=4)
+        write_json(self.settings_file, all_settings)
 
     @app_commands.command(name="ticket", description="Ticket sistemini kur")
     @app_commands.describe(kanal="Ticket panelinin gönderileceği kanal")
@@ -186,7 +176,6 @@ class TicketSistemi(commands.Cog):
 
         s = self._get_settings(interaction.guild.id)
         s["kanal_id"] = str(kanal.id)
-        self._save_settings(interaction.guild.id, s)
 
         embed = discord.Embed(
             title="Ticket Sistemi",
@@ -196,11 +185,23 @@ class TicketSistemi(commands.Cog):
         embed.add_field(name="Nasıl Çalışır?", value="Butona tıklayın, size özel bir kanal açılır. Yetkililer bu kanaldan size yardımcı olur.", inline=False)
         embed.set_footer(text="Ticket Sistemi")
 
-        await kanal.send(embed=embed, view=TicketView(self.bot))
+        old_panel_id = s.get("panel_mesaj_id")
+        if old_panel_id:
+            try:
+                await kanal.fetch_message(int(old_panel_id)).delete()
+            except (discord.NotFound, discord.HTTPException, ValueError):
+                pass
+        panel_message = await kanal.send(embed=embed, view=TicketView(self.bot))
+        s["panel_mesaj_id"] = str(panel_message.id)
+        self._save_settings(interaction.guild.id, s)
         await interaction.followup.send(f"Ticket paneli {kanal.mention} kanalına kuruldu!")
 
     @app_commands.command(name="ticket-yetkili", description="Ticketları görebilecek yetkili rolü ekle/çıkar")
-    @app_commands.describe(rol="Yetkili rol", durum="Ekle veya çıkar")
+    @app_commands.describe(rol="Ticketları görebilecek yetkili rol", durum="Role ekle veya çıkar")
+    @app_commands.choices(durum=[
+        app_commands.Choice(name="Ekle", value="ekle"),
+        app_commands.Choice(name="Çıkar", value="cikar")
+    ])
     @app_commands.guild_only()
     async def ticket_yetkili(self, interaction: discord.Interaction, rol: discord.Role, durum: str = "ekle"):
         if not interaction.user.guild_permissions.administrator:
@@ -217,7 +218,7 @@ class TicketSistemi(commands.Cog):
                 await interaction.response.send_message(f"{rol.mention} ticket yetkilisi olarak eklendi.", ephemeral=True)
             else:
                 await interaction.response.send_message(f"{rol.mention} zaten yetkili listesinde.", ephemeral=True)
-        elif durum == "çıkar":
+        elif durum == "cikar":
             if str(rol.id) in s["yetkililer"]:
                 s["yetkililer"].remove(str(rol.id))
                 self._save_settings(interaction.guild.id, s)
