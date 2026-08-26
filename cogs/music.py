@@ -1,6 +1,7 @@
 import asyncio
 import os
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 import discord
 from discord import app_commands
@@ -171,6 +172,10 @@ class Music(commands.Cog):
             tracks = await asyncio.to_thread(self._resolve_query, query, interaction.user.id)
         except Exception as error:
             print(f"[MUSIC] Kaynak çözümlenemedi: {error}")
+            if "open.spotify.com" in query and not self.spotify:
+                return "Spotify playlisti için Render Environment Variables bölümünde SPOTIFY_CLIENT_ID ve SPOTIFY_CLIENT_SECRET tanımlı olmalı."
+            if "open.spotify.com" in query:
+                return "Spotify playlisti okunamadı. Playlist public olmalı ve Spotify API bilgilerini kontrol etmelisin."
             return "Bu bağlantı veya şarkı çözümlenemedi. YouTube araması ya da doğrudan bir link deneyin."
         if not tracks:
             return "Herhangi bir parça bulunamadı."
@@ -194,33 +199,48 @@ class Music(commands.Cog):
         return f"{len(tracks)} parça sıraya eklendi."
 
     def _resolve_query(self, query, user_id):
+        query = query.strip()
         if "open.spotify.com" in query:
             if not self.spotify:
                 raise RuntimeError("Spotify API ayarlanmamış")
-            if "/playlist/" in query:
-                playlist_id = query.split("/playlist/")[1].split("?")[0]
-                items = self.spotify.playlist_items(playlist_id, limit=50).get("items", [])
-                return [
-                    Track(
-                        f"{item['track']['artists'][0]['name']} - {item['track']['name']}",
-                        f"ytsearch1:{item['track']['artists'][0]['name']} - {item['track']['name']}",
-                        user_id,
-                    )
-                    for item in items if item.get("track")
-                ]
-            track_id = query.split("/track/")[1].split("?")[0]
+            parsed = urlparse(query)
+            parts = [part for part in parsed.path.split("/") if part]
+            if "playlist" in parts:
+                playlist_id = parts[parts.index("playlist") + 1]
+                items = []
+                offset = 0
+                while offset < 100:
+                    page = self.spotify.playlist_items(playlist_id, limit=50, offset=offset, market="TR")
+                    page_items = page.get("items", [])
+                    items.extend(page_items)
+                    if not page.get("next") or not page_items:
+                        break
+                    offset += len(page_items)
+                tracks = []
+                for item in items:
+                    track = item.get("track") or {}
+                    artists = track.get("artists") or []
+                    if not track.get("name") or not artists:
+                        continue
+                    title = f"{artists[0]['name']} - {track['name']}"
+                    tracks.append(Track(title, f"ytsearch1:{title}", user_id))
+                return tracks
+            if "track" not in parts:
+                raise RuntimeError("Geçersiz Spotify bağlantısı")
+            track_id = parts[parts.index("track") + 1]
             track = self.spotify.track(track_id)
             title = f"{track['artists'][0]['name']} - {track['name']}"
             return [Track(title, f"ytsearch1:{title}", user_id)]
 
+        source_query = query if query.startswith(("http://", "https://")) else f"ytsearch1:{query}"
         with yt_dlp.YoutubeDL({**YTDL_OPTIONS, "extract_flat": True}) as ydl:
-            info = ydl.extract_info(query, download=False)
+            info = ydl.extract_info(source_query, download=False)
         entries = info.get("entries") if info.get("_type") == "playlist" else [info]
         tracks = []
         for entry in entries:
             if not entry:
                 continue
-            source = entry.get("webpage_url") or entry.get("url") or query
+            source = entry.get("webpage_url") or entry.get("url") or source_query
             if source and not source.startswith(("http://", "https://", "ytsearch")) and len(source) > 8:
                 source = f"https://www.youtube.com/watch?v={source}"
             tracks.append(Track(entry.get("title", "Bilinmeyen parça"), source, user_id))
