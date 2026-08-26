@@ -18,8 +18,6 @@ KATEGORILER = {
         "cmds": ["`/otorol`"]},
     "ses": {"emoji": "🔊", "name": "Ses Odaları", "desc": "Geçici ses odaları",
         "cmds": ["`/sesoda`"]},
-    "music": {"emoji": "🎵", "name": "Müzik", "desc": "Ses kanalında müzik oynat",
-        "cmds": ["`/music`"]},
     "cekilis": {"emoji": "🎉", "name": "Çekiliş", "desc": "Çekiliş sistemi",
         "cmds": ["`/giveaway`"]},
     "anket": {"emoji": "📊", "name": "Anket", "desc": "Oylama anketleri",

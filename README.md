@@ -14,7 +14,6 @@ Profesyonel Discord moderasyon botu ve web admin paneli.
 - `/instagram`, `/testinstagram`, `/instagram-sil` - Instagram bildirimleri
 - `/komutekle`, `/komutsil`, `/komutlistesi` - Sunucuya özel `!` komutları
 - `/userinfo`, `/serverinfo`, `/help`, `/yazi-tura`, `/zar`, `/espri`, `/avatar`, `/ping` - Bilgi ve eğlence
-- `/music` - Spotify/YouTube Music/YouTube bağlantısı veya arama ile müzik
 
 `/karsilama` sistemi yeni üyeler için ROOTx temalı, avatar içeren bir PNG banner üretir. Banner üretilemezse ayarlanmış yazılı mesaj gönderilmeye devam eder.
 
@@ -43,7 +42,6 @@ cp .env.example .env
 DISCORD_TOKEN=your_bot_token_here
 ```
 
-Müzik için sistemde FFmpeg kurulu olmalı. Spotify playlist ve track linklerini çözmek için ayrıca Spotify Developer panelinden alınan `SPOTIFY_CLIENT_ID` ve `SPOTIFY_CLIENT_SECRET` değişkenlerini ekleyebilirsin. YouTube ve YouTube Music bağlantıları bu bilgiler olmadan da çalışır.
 
 4. **Terminal 1 - Bot'u çalıştır:**
 ```bash

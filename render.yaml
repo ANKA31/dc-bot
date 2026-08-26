@@ -2,7 +2,7 @@ services:
   - type: web
     name: rootv1-bot
     env: python
-    buildCommand: apt-get update && apt-get install -y ffmpeg && pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     envVars:
       - key: DATA_DIR
@@ -12,10 +12,6 @@ services:
       - key: ADMIN_PASSWORD
         sync: false
       - key: SECRET_KEY
-        sync: false
-      - key: SPOTIFY_CLIENT_ID
-        sync: false
-      - key: SPOTIFY_CLIENT_SECRET
         sync: false
     disk:
       name: bot-data
