@@ -16,6 +16,8 @@ Profesyonel Discord moderasyon botu ve web admin paneli.
 - `/userinfo`, `/serverinfo`, `/help`, `/yazi-tura`, `/zar`, `/espri`, `/avatar`, `/ping` - Bilgi ve eğlence
 - `/music` - Spotify/YouTube Music/YouTube bağlantısı veya arama ile müzik
 
+`/karsilama` sistemi yeni üyeler için ROOTx temalı, avatar içeren bir PNG banner üretir. Banner üretilemezse ayarlanmış yazılı mesaj gönderilmeye devam eder.
+
 ### 📊 Admin Dashboard
 - **Dashboard:** Bot istatistikleri, son işlemler
 - **Moderasyon Logları:** Tüm işlemleri göster, filtrele

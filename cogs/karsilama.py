@@ -3,7 +3,10 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
+import asyncio
+import io
 from utils_json import read_json, write_json
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 class Karsilama(commands.Cog):
     def __init__(self, bot):
@@ -22,6 +25,61 @@ class Karsilama(commands.Cog):
         data = read_json(self.settings_file, {})
         data[str(guild_id)] = settings
         write_json(self.settings_file, data)
+
+    async def _create_welcome_banner(self, member):
+        try:
+            avatar = await member.display_avatar.read()
+            return await asyncio.to_thread(self._render_banner, member, avatar)
+        except Exception as error:
+            print(f"[KARSILAMA] Banner oluşturulamadı: {error}")
+            return None
+
+    @staticmethod
+    def _render_banner(member, avatar_bytes):
+        width, height = 1200, 400
+        image = Image.new("RGB", (width, height), "#0b0b12")
+        draw = ImageDraw.Draw(image)
+        for x in range(width):
+            ratio = x / width
+            color = (18 + int(35 * ratio), 20 + int(22 * ratio), 48 + int(70 * ratio))
+            draw.line((x, 0, x, height), fill=color)
+
+        avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGB")
+        avatar = ImageOps.fit(avatar, (220, 220), method=Image.Resampling.LANCZOS)
+        mask = Image.new("L", avatar.size, 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, 219, 219), fill=255)
+        image.paste(avatar, (85, 90), mask)
+        draw.ellipse((81, 86, 309, 314), outline="#8b5cf6", width=6)
+
+        font_paths = [
+            "C:/Windows/Fonts/segoeui.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        bold_paths = [
+            "C:/Windows/Fonts/segoeuib.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ]
+
+        def load_font(paths, size):
+            for path in paths:
+                try:
+                    return ImageFont.truetype(path, size)
+                except OSError:
+                    continue
+            return ImageFont.load_default()
+
+        title_font = load_font(bold_paths, 54)
+        name_font = load_font(bold_paths, 34)
+        small_font = load_font(font_paths, 22)
+        draw.text((365, 92), "ROOTx", font=title_font, fill="#c4b5fd")
+        draw.text((365, 168), "Sunucumuza hoş geldin!", font=name_font, fill="#ffffff")
+        draw.text((365, 224), member.display_name[:32], font=name_font, fill="#a78bfa")
+        draw.text((365, 292), f"{member.guild.name[:42]}  •  #{member.guild.member_count}", font=small_font, fill="#c7c7d1")
+
+        output = io.BytesIO()
+        image.save(output, format="PNG", optimize=True)
+        output.seek(0)
+        return output
 
     @app_commands.command(name="karsilama", description="Karsilama/ayrilma mesaji ayarlari")
     @app_commands.describe(
@@ -76,7 +134,7 @@ class Karsilama(commands.Cog):
         embed.add_field(name="Kanal", value=f"<#{kanal_id}>" if kanal_id else "Ayarlanmamis", inline=False)
         embed.add_field(name="Hos Geldin", value=settings.get("hosgeldin", "Ayarlanmamis")[:100], inline=False)
         embed.add_field(name="Gule Gule", value=settings.get("gulegule", "Ayarlanmamis")[:100], inline=False)
-        embed.set_footer(text="{user}=kullanici adi {server}=sunucu {sayi}=uye sayisi")
+        embed.set_footer(text="{user}=kullanici adi {mention}=etiket {server}=sunucu {sayi}=uye sayisi {id}=kullanici ID")
         if degisti:
             embed.description = "\n".join(["✅ " + d for d in degisti])
         await interaction.response.send_message(embed=embed)
@@ -88,14 +146,22 @@ class Karsilama(commands.Cog):
         settings = self._get_settings(member.guild.id)
         kanal_id = settings.get("kanal")
         mesaj = settings.get("hosgeldin", "")
-        if not kanal_id or not mesaj:
+        if not kanal_id:
             return
         kanal = member.guild.get_channel(int(kanal_id))
         if not isinstance(kanal, discord.TextChannel):
             return
-        mesaj = mesaj.replace("{user}", member.display_name).replace("{mention}", member.mention).replace("{server}", member.guild.name).replace("{sayi}", str(member.guild.member_count)).replace("{id}", str(member.id))
+        if mesaj:
+            mesaj = mesaj.replace("{user}", member.display_name).replace("{mention}", member.mention).replace("{server}", member.guild.name).replace("{sayi}", str(member.guild.member_count)).replace("{id}", str(member.id))
         try:
-            await kanal.send(mesaj, allowed_mentions=discord.AllowedMentions.none())
+            banner = await self._create_welcome_banner(member)
+            if banner:
+                file = discord.File(banner, filename="rootx-welcome.png")
+                embed = discord.Embed(color=discord.Color(0x8B5CF6))
+                embed.set_image(url="attachment://rootx-welcome.png")
+                await kanal.send(content=mesaj, embed=embed, file=file, allowed_mentions=discord.AllowedMentions.none())
+            elif mesaj:
+                await kanal.send(mesaj, allowed_mentions=discord.AllowedMentions.none())
         except:
             pass
 
