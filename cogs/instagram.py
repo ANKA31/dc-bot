@@ -246,5 +246,8 @@ class Instagram(commands.Cog):
     async def before_check(self):
         await self.bot.wait_until_ready()
 
+    def cog_unload(self):
+        self.check_instagram.cancel()
+
 async def setup(bot):
     await bot.add_cog(Instagram(bot))

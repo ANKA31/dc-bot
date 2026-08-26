@@ -51,9 +51,13 @@ class AutoMod(commands.Cog):
 
         try:
             for rule in await guild.fetch_automod_rules():
-                if rule.name == "Hakaret Korumasi":
+                if rule.name in {
+                    "Kufur Korumasi", "Reklam Korumasi", "Spam Kelime Korumasi",
+                    "NSFW Korumasi", "Siddet Korumasi", "Mention Spam Korumasi",
+                    "Link Spam Korumasi", "Hazir Kufur Listesi", "Hakaret Korumasi"
+                }:
                     await rule.delete()
-                    print(f"[AUTOMOD] Hakaret Korumasi silindi")
+                    print(f"[AUTOMOD] {rule.name} silindi")
         except:
             pass
 
@@ -128,7 +132,7 @@ class AutoMod(commands.Cog):
     async def on_guild_join(self, guild):
         print(f"[AUTOMOD] {guild.name}: Otomatik kural kurulumu basliyor...")
         toplam = await self._kurallari_kur(guild)
-        print(f"[AUTOMOD] {guild.name}: {toplam}/9 kural kuruldu.")
+        print(f"[AUTOMOD] {guild.name}: {toplam}/8 kural kuruldu.")
 
     @app_commands.command(name="automod-setup", description="AutoMod kurallarini manuel kur")
     @app_commands.guild_only()
@@ -139,8 +143,8 @@ class AutoMod(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         print(f"[AUTOMOD] {interaction.guild.name}: Manuel kurulum basladi...")
         toplam = await self._kurallari_kur(interaction.guild)
-        print(f"[AUTOMOD] {interaction.guild.name}: {toplam}/9 kuruldu.")
-        await interaction.followup.send(f"**{toplam}/9** AutoMod kurali kuruldu!")
+        print(f"[AUTOMOD] {interaction.guild.name}: {toplam}/8 kuruldu.")
+        await interaction.followup.send(f"**{toplam}/8** AutoMod kurali kuruldu!")
 
     @app_commands.command(name="automod-kurallar", description="Bu sunucudaki AutoMod kurallarini listele")
     @app_commands.guild_only()

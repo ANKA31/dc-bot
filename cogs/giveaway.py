@@ -14,7 +14,10 @@ class Giveaway(commands.Cog):
         self.file = "giveaways.json"
         self._load_active()
         self.bot.add_view(GiveawayView(self))
-        self.bot.loop.create_task(self._checker())
+        self.checker_task = self.bot.loop.create_task(self._checker())
+
+    def cog_unload(self):
+        self.checker_task.cancel()
 
     def _save_active(self):
         write_json(self.file, {str(k): v for k, v in self.active.items()})

@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from datetime import timedelta, datetime
+import os
 from utils_json import read_json, write_json
 
 BAN_SEBEPLERI = [

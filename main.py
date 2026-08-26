@@ -27,6 +27,15 @@ bot = commands.Bot(
     chunk_guilds_at_startup=True
 )
 
+BOT_PERMISSIONS = discord.Permissions()
+for permission in (
+    "view_channel", "send_messages", "manage_messages", "embed_links", "attach_files",
+    "read_message_history", "add_reactions", "connect", "speak", "move_members",
+    "manage_channels", "manage_roles", "kick_members", "ban_members", "moderate_members",
+    "view_audit_log", "manage_guild", "manage_webhooks", "create_instant_invite"
+):
+    setattr(BOT_PERMISSIONS, permission, True)
+
 MEMBER_CACHE_FILE = "members_cache.json"
 MODLOGS_FILE = "modlogs.json"
 
@@ -244,7 +253,7 @@ async def on_ready():
         "bot_name": str(bot.user),
         "bot_id": bot.user.id,
         "guilds": len(bot.guilds),
-        "invite_url": f"https://discord.com/api/oauth2/authorize?client_id={bot.user.id}&permissions=8&scope=bot%20applications.commands"
+        "invite_url": f"https://discord.com/api/oauth2/authorize?client_id={bot.user.id}&permissions={BOT_PERMISSIONS.value}&scope=bot%20applications.commands"
     })
 
     for loop in (guild_update_loop, member_cache_loop, komut_kontrol_loop, guild_sync_loop):

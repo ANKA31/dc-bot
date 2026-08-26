@@ -495,6 +495,12 @@
             setTimeout(() => t.style.display = 'none', 3000);
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            }[char]));
+        }
+
         function showPage(name) {
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -522,7 +528,7 @@
         function badge(action) {
             const map = { BAN: ['Yasak', 'red'], KICK: ['Atildi', 'yellow'], PURGE: ['Silme', 'blue'] };
             const [text, cls] = map[action] || [action, 'blue'];
-            return `<span class="badge ${cls}">${text}</span>`;
+            return `<span class="badge ${cls}">${escapeHtml(text)}</span>`;
         }
 
         async function loadAll() {
@@ -555,8 +561,8 @@
                         ${s.icon_url ? `<img src="${s.icon_url}" alt="">` : '<i class="fas fa-server"></i>'}
                     </div>
                     <div class="server-info">
-                        <h4>${s.name}</h4>
-                        <p>${s.member_count} uye - ${s.created_at}</p>
+                        <h4>${escapeHtml(s.name)}</h4>
+                        <p>${escapeHtml(s.member_count)} uye - ${escapeHtml(s.created_at)}</p>
                     </div>
                     <div class="server-actions">
                         <button class="btn-icon info" onclick="event.stopPropagation();showDetail('${s.id}')">
@@ -602,13 +608,13 @@
                             ${g.icon_url ? `<img src="${g.icon_url}" alt="">` : '<i class="fas fa-server"></i>'}
                         </div>
                         <div>
-                            <h4 style="margin:0">${g.name}</h4>
+                    <h4 style="margin:0">${escapeHtml(g.name)}</h4>
                             <p style="color:#80808a;font-size:12px;margin-top:4px">ID: ${g.id}</p>
                         </div>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px">
                         <div class="info-row"><span class="label">Uye Sayisi</span><span>${g.member_count || '?'}</span></div>
-                        <div class="info-row"><span class="label">Sahip</span><span>${g.owner_name || '?'}</span></div>
+                         <div class="info-row"><span class="label">Sahip</span><span>${escapeHtml(g.owner_name || '?')}</span></div>
                         <div class="info-row"><span class="label">Olusturulma</span><span>${g.created_at || '?'}</span></div>
                         <div class="info-row"><span class="label">Toplam Islem</span><span>${guildStats ? guildStats.total : 0}</span></div>
                     </div>
@@ -625,7 +631,7 @@
                 if (d.logs && d.logs.length) {
                     d.logs.slice(-30).reverse().forEach(log => {
                         const time = log.timestamp ? new Date(log.timestamp*1000).toLocaleString('tr-TR') : '';
-                        html += `<tr><td>${badge(log.action)}</td><td>${log.moderator || '?'}</td><td>${log.target || '?'}</td><td>${log.reason || '-'}</td><td style="font-size:11px;color:#80808a">${time}</td></tr>`;
+                         html += `<tr><td>${badge(log.action)}</td><td>${escapeHtml(log.moderator || '?')}</td><td>${escapeHtml(log.target || '?')}</td><td>${escapeHtml(log.reason || '-')}</td><td style="font-size:11px;color:#80808a">${escapeHtml(time)}</td></tr>`;
                     });
                 } else {
                     html += '<tr><td colspan="5" style="text-align:center;color:#80808a;padding:20px">Henuz log yok</td></tr>';
@@ -671,7 +677,7 @@
             const sel = document.getElementById('log-guild-filter');
             const currentVal = sel.value;
             sel.innerHTML = '<option value="">Tum Sunucular</option>'
-                + guilds.map(g => `<option value="${g}">${g}</option>`).join('');
+                + guilds.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
             if (currentVal && guilds.includes(currentVal)) sel.value = currentVal;
         }
 
@@ -705,8 +711,8 @@
                     <div class="log-card${i < 3 ? ' new' : ''}">
                         <div class="log-icon ${cls}"><i class="fas ${icon}"></i></div>
                         <div class="log-info">
-                            <div class="log-title">${badge(l.action)} ${l.target || '?'} <span style="color:#80808a;font-weight:400">${l.reason ? '- '+l.reason : ''}</span></div>
-                            <div class="log-meta"><i class="fas fa-user"></i> ${l.moderator || '?'} <i class="fas fa-server" style="margin-left:8px"></i> ${guildName}</div>
+                            <div class="log-title">${badge(l.action)} ${escapeHtml(l.target || '?')} <span style="color:#80808a;font-weight:400">${l.reason ? '- '+escapeHtml(l.reason) : ''}</span></div>
+                            <div class="log-meta"><i class="fas fa-user"></i> ${escapeHtml(l.moderator || '?')} <i class="fas fa-server" style="margin-left:8px"></i> ${escapeHtml(guildName)}</div>
                         </div>
                         <div class="log-time">${time}</div>
                     </div>
@@ -719,7 +725,7 @@
             fetch('/api/status').then(r=>r.json()).then(d => {
                 let url = d.invite_url;
                 if (!url && d.bot_id && d.bot_id !== 'Bilinmiyor') {
-                    url = `https://discord.com/api/oauth2/authorize?client_id=${d.bot_id}&permissions=8&scope=bot%20applications.commands`;
+                    url = `https://discord.com/api/oauth2/authorize?client_id=${d.bot_id}&permissions=0&scope=bot%20applications.commands`;
                 }
                 if (url) window.open(url, '_blank');
                 else showToast('Davet linki alinamadi. Bot henuz baslatilmamis olabilir.', 'error');
@@ -864,7 +870,7 @@
                 const r = await fetch(`/api/members/${guildId}`);
                 const d = await r.json();
                 sel.innerHTML = '<option value="">Kullanici Secin</option>'
-                    + (d.members || []).map(m => `<option value="${m.id}" data-name="${m.name}">${m.display_name} (${m.name})</option>`).join('');
+                    + (d.members || []).map(m => `<option value="${escapeHtml(m.id)}" data-name="${escapeHtml(m.name)}">${escapeHtml(m.display_name)} (${escapeHtml(m.name)})</option>`).join('');
             } catch(e) { sel.innerHTML = '<option value="">Hata</option>'; }
         }
 
@@ -912,8 +918,8 @@
                 if (!results.length) { div.innerHTML = '<span style="color:#80808a">Eslesen kullanici bulunamadi.</span>'; return; }
                 div.innerHTML = results.slice(0, 50).map(r => `
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#0a0a0f;border-radius:8px;margin-bottom:4px;font-size:13px">
-                        <span><strong>${r.display_name || r.name}</strong> (${r.name})</span>
-                        <span style="color:#80808a">${r.guild}</span>
+                         <span><strong>${escapeHtml(r.display_name || r.name)}</strong> (${escapeHtml(r.name)})</span>
+                         <span style="color:#80808a">${escapeHtml(r.guild)}</span>
                     </div>
                 `).join('');
                 if (results.length > 50) div.innerHTML += '<div style="text-align:center;color:#80808a;font-size:12px;padding:4px">... ve ' + (results.length - 50) + ' daha</div>';

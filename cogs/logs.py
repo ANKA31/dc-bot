@@ -472,11 +472,14 @@ class LogSistemi(commands.Cog):
         embed.add_field(name="Kullanıcı", value=user.mention, inline=True)
         embed.add_field(name="Kullanıcı ID", value=f"`{user.id}`", inline=True)
         embed.set_footer(text=guild.name)
-        async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
-            if entry.target.id == user.id:
-                embed.add_field(name="Moderatör", value=entry.user.mention if entry.user else "Bilinmiyor", inline=True)
-                if entry.reason:
-                    embed.add_field(name="Sebep", value=entry.reason, inline=False)
+        try:
+            async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+                if entry.target and entry.target.id == user.id:
+                    embed.add_field(name="Moderatör", value=entry.user.mention if entry.user else "Bilinmiyor", inline=True)
+                    if entry.reason:
+                        embed.add_field(name="Sebep", value=entry.reason, inline=False)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
         await self._send_log(guild.id, "moderation", embed)
 
     @commands.Cog.listener()
@@ -486,9 +489,12 @@ class LogSistemi(commands.Cog):
         embed.add_field(name="Kullanıcı", value=user.mention, inline=True)
         embed.add_field(name="Kullanıcı ID", value=f"`{user.id}`", inline=True)
         embed.set_footer(text=guild.name)
-        async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.unban):
-            if entry.target.id == user.id:
-                embed.add_field(name="Moderatör", value=entry.user.mention if entry.user else "Bilinmiyor", inline=True)
+        try:
+            async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.unban):
+                if entry.target and entry.target.id == user.id:
+                    embed.add_field(name="Moderatör", value=entry.user.mention if entry.user else "Bilinmiyor", inline=True)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
         await self._send_log(guild.id, "moderation", embed)
 
     @commands.Cog.listener()

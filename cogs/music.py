@@ -17,7 +17,7 @@ except ImportError:
 
 YTDL_OPTIONS = {
     "format": "bestaudio/best",
-    "noplaylist": True,
+    "noplaylist": False,
     "quiet": True,
     "no_warnings": True,
     "default_search": "ytsearch1",
@@ -166,6 +166,8 @@ class Music(commands.Cog):
         await interaction.response.send_modal(MusicInputModal(self))
 
     async def handle_request(self, interaction, query, add_only=False):
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            return "İşlem sırasında ses kanalından ayrılmışsın. Tekrar dene."
         voice_channel = interaction.user.voice.channel
         guild = interaction.guild
         try:

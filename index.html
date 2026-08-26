@@ -88,7 +88,7 @@
                 if (d.invite_url) {
                     inviteBtn.href = d.invite_url;
                 } else if (d.bot_id && d.bot_id !== 'Bilinmiyor') {
-                    inviteBtn.href = `https://discord.com/api/oauth2/authorize?client_id=${d.bot_id}&permissions=8&scope=bot%20applications.commands`;
+                    inviteBtn.href = `https://discord.com/api/oauth2/authorize?client_id=${d.bot_id}&permissions=0&scope=bot%20applications.commands`;
                 }
             } catch(e) {
                 inviteBtn.href = '#';
