@@ -243,17 +243,15 @@ class Antibot(commands.Cog):
             self._save_guild_settings(guild.id, settings)
         return changed
 
-    async def acil_kilit(self, guild, reason="Antibot: acil koruma"):
-        """Diğer koruma cog'larının kullanabileceği kalıcı sunucu kilidi."""
-        settings = self._get_guild_settings(guild.id)
-        return await self._kilitle_metinkanallari(guild, settings)
-
     async def _kilitleri_ac(self, guild, settings):
         locked = settings.get("kilitli_kanallar", {})
         restored = 0
         async with self.kilit_lock:
             for channel_id, previous in list(locked.items()):
-                channel = guild.get_channel(int(channel_id))
+                try:
+                    channel = guild.get_channel(int(channel_id))
+                except (TypeError, ValueError):
+                    continue
                 if not isinstance(channel, discord.TextChannel):
                     continue
                 try:
@@ -264,6 +262,36 @@ class Antibot(commands.Cog):
             settings["kilitli_kanallar"] = {}
             self._save_guild_settings(guild.id, settings)
         return restored
+
+    async def _canli_uye(self, guild, member_id):
+        try:
+            return await guild.fetch_member(member_id)
+        except discord.NotFound:
+            return None
+        except (discord.Forbidden, discord.HTTPException):
+            return guild.get_member(member_id)
+
+    async def _botu_ekleyen(self, guild, bot_id):
+        if not guild.me or not guild.me.guild_permissions.view_audit_log:
+            return None
+        try:
+            async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.bot_add):
+                if entry.target and entry.target.id == bot_id:
+                    return entry.user
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+        return None
+
+    async def _antibot_bildirim(self, guild, embed):
+        settings = self._get_guild_settings(guild.id)
+        kanal = self._get_kanal(settings) or guild.system_channel
+        if not kanal:
+            kanal = next((ch for ch in guild.text_channels if ch.permissions_for(guild.me).send_messages), None)
+        if kanal:
+            try:
+                await kanal.send(embed=embed)
+            except (discord.Forbidden, discord.HTTPException):
+                pass
 
     async def _mudahele_et(self, member, settings, reason):
         """Ban başarısızsa kick dener; ikisi de olmazsa acil kilit uygular."""
@@ -302,7 +330,7 @@ class Antibot(commands.Cog):
                 return
 
             for attempt in range(4):
-                member = guild.get_member(member_id)
+                member = await self._canli_uye(guild, member_id)
                 if not member or not member.bot:
                     return
                 if str(member.id) in settings.get("guvenli_botlar", []):
@@ -319,15 +347,19 @@ class Antibot(commands.Cog):
                 if attempt < 3:
                     await asyncio.sleep(2.5)
 
-            member = guild.get_member(member_id)
+            member = await self._canli_uye(guild, member_id)
             if member and member.bot:
                 await self._kilitle_metinkanallari(guild, settings)
-                kanal = self._get_kanal(settings) or guild.system_channel
-                if kanal:
-                    await kanal.send(
-                        f"🛡️ `{member}` 10 saniyede 4 ban denemesinden sonra hâlâ sunucuda. "
-                        "Tüm metin kanalları kilitlendi."
-                    )
+                embed = discord.Embed(
+                    title="Acil AntiBot Kilidi",
+                    description=f"`{member}` 10 saniyede 4 ban denemesinden sonra hâlâ sunucuda kaldı.",
+                    color=discord.Color.dark_red(),
+                    timestamp=datetime.now(),
+                )
+                embed.add_field(name="Bot ID", value=f"`{member.id}`", inline=True)
+                embed.add_field(name="İşlem", value="Tüm metin kanalları kilitlendi", inline=True)
+                embed.set_footer(text=f"Antibot • Sunucu: {guild.name}")
+                await self._antibot_bildirim(guild, embed)
         except (discord.Forbidden, discord.HTTPException):
             pass
         finally:
@@ -382,29 +414,45 @@ class Antibot(commands.Cog):
         settings = self._get_guild_settings(member.guild.id)
         if not settings["aktif"]:
             return
-        if str(member.id) in settings.get("guvenli_botlar", []):
+        guvenli = str(member.id) in settings.get("guvenli_botlar", [])
+        ekleyen = await self._botu_ekleyen(member.guild, member.id)
+
+        embed = discord.Embed(
+            title="Güvenli Bot Katıldı" if guvenli else "Şüpheli Bot Katıldı",
+            description=f"{member.mention} (`{member.name}`) sunucuya katıldı.",
+            color=discord.Color.green() if guvenli else discord.Color.red(),
+            timestamp=datetime.now(),
+        )
+        embed.add_field(name="Bot ID", value=f"`{member.id}`", inline=True)
+        embed.add_field(name="Güvenli Liste", value="✅ Evet" if guvenli else "❌ Hayır", inline=True)
+        embed.add_field(name="Hesap Yaşı", value=member.created_at.strftime("%d.%m.%Y %H:%M"), inline=True)
+        embed.add_field(name="Botu Ekleyen", value=ekleyen.mention if ekleyen else "Bilinmiyor", inline=True)
+        roller = ", ".join(role.mention for role in member.roles if role.name != "@everyone")
+        embed.add_field(name="Roller", value=roller or "Yok", inline=False)
+        embed.set_footer(text=f"Antibot • Sunucu: {member.guild.name}")
+        await self._antibot_bildirim(member.guild, embed)
+
+        if not guvenli:
+            task = asyncio.create_task(self._katilim_kontrolu(member.guild.id, member.id))
+            self.join_tasks.add(task)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        if not member.bot:
             return
-
-        task = asyncio.create_task(self._katilim_kontrolu(member.guild.id, member.id))
-        self.join_tasks.add(task)
-
-        kanal = self._get_kanal(settings)
-        if not kanal:
-            kanal = member.guild.system_channel
-        if not kanal:
-            for ch in member.guild.text_channels:
-                if ch.permissions_for(member.guild.me).send_messages:
-                    kanal = ch
-                    break
-        if not kanal:
+        settings = self._get_guild_settings(member.guild.id)
+        if not settings["aktif"]:
             return
-
-        embed = discord.Embed(title="Bot Algılandı!", description=f"{member.mention} (`{member.name}`) sunucuya katıldı!", color=discord.Color.red(), timestamp=datetime.now())
-        embed.add_field(name="Bot ID", value=member.id, inline=True)
-        embed.add_field(name="Hesap Oluşturma", value=member.created_at.strftime("%d.%m.%Y %H:%M"), inline=True)
-        embed.add_field(name="Eşik", value=f"{settings['esik']} mesajdan sonra banlanır", inline=False)
-        embed.set_footer(text="Antibot Sistemi")
-        await kanal.send(embed=embed)
+        embed = discord.Embed(
+            title="Bot Sunucudan Ayrıldı",
+            description=f"`{member.name}` sunucudan ayrıldı veya uzaklaştırıldı.",
+            color=discord.Color.orange(),
+            timestamp=datetime.now(),
+        )
+        embed.add_field(name="Bot ID", value=f"`{member.id}`", inline=True)
+        embed.add_field(name="Botu Ekleyen", value="Ayrıntı audit kaydında", inline=True)
+        embed.set_footer(text=f"Antibot • Sunucu: {member.guild.name}")
+        await self._antibot_bildirim(member.guild, embed)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -456,7 +504,10 @@ class Antibot(commands.Cog):
                         description += " Bot uzaklaştırılamadığı için metin kanalları kilitlendi."
                     embed = discord.Embed(title=title, description=description, color=discord.Color.red(), timestamp=datetime.now())
                     embed.set_footer(text="Antibot Sistemi")
-                    await kanal.send(embed=embed)
+                    try:
+                        await kanal.send(embed=embed)
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
             finally:
                 self.bot_sayac.pop(key, None)
                 self.son_mesajlar.pop(key, None)
