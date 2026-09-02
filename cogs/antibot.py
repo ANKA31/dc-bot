@@ -4,6 +4,8 @@ from discord import app_commands
 import json
 import os
 import time
+import re
+import asyncio
 from collections import defaultdict, deque
 from datetime import datetime
 from utils_json import read_json, write_json
@@ -184,6 +186,9 @@ class Antibot(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.bot_sayac = defaultdict(deque)
+        self.son_mesajlar = defaultdict(deque)
+        self.kilit_lock = asyncio.Lock()
+        self.join_tasks = set()
         self.settings_file = "antibot_settings.json"
         self._init_settings()
 
@@ -192,7 +197,7 @@ class Antibot(commands.Cog):
             write_json(self.settings_file, {})
 
     def _get_guild_settings(self, guild_id: int):
-        defaults = {"aktif": False, "esik": 6, "kanal_id": None, "guvenli_botlar": []}
+        defaults = {"aktif": False, "esik": 4, "kanal_id": None, "guvenli_botlar": [], "kilitli_kanallar": {}}
         settings = read_json(self.settings_file, {})
         gid = str(guild_id)
         if gid not in settings:
@@ -217,6 +222,126 @@ class Antibot(commands.Cog):
             except (ValueError, TypeError):
                 pass
         return None
+
+    async def _kilitle_metinkanallari(self, guild, settings):
+        """Saldırı durdurulamazsa @everyone için yazmayı kapatır."""
+        me = guild.me
+        if not me or not me.guild_permissions.manage_channels:
+            return 0
+        locked = settings.setdefault("kilitli_kanallar", {})
+        changed = 0
+        async with self.kilit_lock:
+            for channel in guild.text_channels:
+                if str(channel.id) in locked:
+                    continue
+                try:
+                    locked[str(channel.id)] = channel.overwrites_for(guild.default_role).send_messages
+                    await channel.set_permissions(guild.default_role, send_messages=False, reason="Antibot: bot uzaklaştırılamadı")
+                    changed += 1
+                except (discord.Forbidden, discord.HTTPException):
+                    continue
+            self._save_guild_settings(guild.id, settings)
+        return changed
+
+    async def acil_kilit(self, guild, reason="Antibot: acil koruma"):
+        """Diğer koruma cog'larının kullanabileceği kalıcı sunucu kilidi."""
+        settings = self._get_guild_settings(guild.id)
+        return await self._kilitle_metinkanallari(guild, settings)
+
+    async def _kilitleri_ac(self, guild, settings):
+        locked = settings.get("kilitli_kanallar", {})
+        restored = 0
+        async with self.kilit_lock:
+            for channel_id, previous in list(locked.items()):
+                channel = guild.get_channel(int(channel_id))
+                if not isinstance(channel, discord.TextChannel):
+                    continue
+                try:
+                    await channel.set_permissions(guild.default_role, send_messages=previous, reason="Antibot: kilit yetkili tarafından açıldı")
+                    restored += 1
+                except (discord.Forbidden, discord.HTTPException):
+                    continue
+            settings["kilitli_kanallar"] = {}
+            self._save_guild_settings(guild.id, settings)
+        return restored
+
+    async def _mudahele_et(self, member, settings, reason):
+        """Ban başarısızsa kick dener; ikisi de olmazsa acil kilit uygular."""
+        try:
+            await member.guild.ban(member, reason=reason, delete_message_days=1)
+            return "ban"
+        except (discord.Forbidden, discord.HTTPException):
+            try:
+                await member.guild.kick(member, reason=f"{reason} (ban başarısız)")
+                return "kick"
+            except (discord.Forbidden, discord.HTTPException):
+                await self._kilitle_metinkanallari(member.guild, settings)
+                return "kilit"
+
+    def _spam_tespit(self, message):
+        content = re.sub(r"\s+", " ", message.content.strip().lower())
+        if not content:
+            return False
+        now = time.monotonic()
+        key = (message.guild.id, message.author.id)
+        recent = self.son_mesajlar[key]
+        while recent and now - recent[0][0] > 10:
+            recent.popleft()
+        recent.append((now, content))
+        same_content = sum(item == content for _, item in recent)
+        return same_content >= 4 or (len(recent) >= 4 and content.startswith(("http://", "https://", "discord.gg/")))
+
+    async def _katilim_kontrolu(self, guild_id, member_id):
+        """Botu 10 saniyede dört kez banlamayı dener; kalırsa acil kilit uygular."""
+        try:
+            guild = self.bot.get_guild(guild_id)
+            if not guild:
+                return
+            settings = self._get_guild_settings(guild.id)
+            if not settings["aktif"]:
+                return
+
+            for attempt in range(4):
+                member = guild.get_member(member_id)
+                if not member or not member.bot:
+                    return
+                if str(member.id) in settings.get("guvenli_botlar", []):
+                    return
+                try:
+                    await guild.ban(
+                        member,
+                        reason=f"Antibot - otomatik ban denemesi {attempt + 1}/4",
+                        delete_message_days=1,
+                    )
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+
+                if attempt < 3:
+                    await asyncio.sleep(2.5)
+
+            member = guild.get_member(member_id)
+            if member and member.bot:
+                await self._kilitle_metinkanallari(guild, settings)
+                kanal = self._get_kanal(settings) or guild.system_channel
+                if kanal:
+                    await kanal.send(
+                        f"🛡️ `{member}` 10 saniyede 4 ban denemesinden sonra hâlâ sunucuda. "
+                        "Tüm metin kanalları kilitlendi."
+                    )
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+        finally:
+            self.join_tasks.discard(asyncio.current_task())
+
+    @app_commands.command(name="antibot-kilit-ac", description="Antibotun kilitlediği metin kanallarını açar")
+    @app_commands.guild_only()
+    async def antibot_kilit_ac(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Bu komutu kullanmak için yetkiniz yok!", ephemeral=True)
+            return
+        settings = self._get_guild_settings(interaction.guild.id)
+        restored = await self._kilitleri_ac(interaction.guild, settings)
+        await interaction.response.send_message(f"{restored} metin kanalının kilidi açıldı.", ephemeral=True)
 
     async def _refresh_embed(self, s, guild):
         durum = "✅ Aktif" if s["aktif"] else "❌ Devre Dışı"
@@ -259,8 +384,9 @@ class Antibot(commands.Cog):
             return
         if str(member.id) in settings.get("guvenli_botlar", []):
             return
-        if not member.guild.me.guild_permissions.ban_members:
-            return
+
+        task = asyncio.create_task(self._katilim_kontrolu(member.guild.id, member.id))
+        self.join_tasks.add(task)
 
         kanal = self._get_kanal(settings)
         if not kanal:
@@ -288,22 +414,11 @@ class Antibot(commands.Cog):
             return
         if message.author == self.bot.user:
             return
-        if message.author.guild_permissions.administrator:
-            return
-
         settings = self._get_guild_settings(message.guild.id)
         if str(message.author.id) in settings.get("guvenli_botlar", []):
             return
         if not settings["aktif"]:
             return
-        if not message.guild.me.guild_permissions.ban_members:
-            return
-
-        if message.author.id == message.guild.owner_id:
-            return
-        if message.author.top_role >= message.guild.me.top_role:
-            return
-
         key = (message.guild.id, message.author.id)
         now = time.monotonic()
         timestamps = self.bot_sayac[key]
@@ -318,9 +433,13 @@ class Antibot(commands.Cog):
             except:
                 pass
 
-        if sayac >= settings["esik"]:
+        if sayac >= settings["esik"] or self._spam_tespit(message):
             try:
-                await message.guild.ban(message.author, reason=f"Antibot - {settings['esik']} mesaj sınırı aşıldı")
+                action = await self._mudahele_et(
+                    message.author,
+                    settings,
+                    "Antibot - tekrarlı/link spamı tespit edildi",
+                )
 
                 kanal = self._get_kanal(settings)
                 if not kanal:
@@ -331,13 +450,16 @@ class Antibot(commands.Cog):
                             kanal = ch
                             break
                 if kanal:
-                    embed = discord.Embed(title="Bot Banlandı", description=f"{message.author.mention} (`{message.author.name}`) **{settings['esik']}** mesaj sınırını aşınca otomatik banlandı.", color=discord.Color.red(), timestamp=datetime.now())
+                    title = "Bot Uzaklaştırıldı" if action != "kilit" else "Acil Kilit Uygulandı"
+                    description = f"{message.author.mention} (`{message.author.name}`) için **{action}** uygulandı."
+                    if action == "kilit":
+                        description += " Bot uzaklaştırılamadığı için metin kanalları kilitlendi."
+                    embed = discord.Embed(title=title, description=description, color=discord.Color.red(), timestamp=datetime.now())
                     embed.set_footer(text="Antibot Sistemi")
                     await kanal.send(embed=embed)
-            except:
-                pass
             finally:
                 self.bot_sayac.pop(key, None)
+                self.son_mesajlar.pop(key, None)
 
 async def setup(bot):
     await bot.add_cog(Antibot(bot))

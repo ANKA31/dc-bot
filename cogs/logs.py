@@ -10,6 +10,7 @@ LOG_TYPES = {
     "all": "Tüm Loglar",
     "message_delete": "Mesaj Silme",
     "message_edit": "Mesaj Düzenleme",
+    "reaction": "Tepki İşlemleri",
     "voice": "Sesli Kanallar",
     "member": "Üye İşlemleri",
     "channel": "Kanal İşlemleri",
@@ -27,7 +28,7 @@ LOG_TYPES = {
 }
 
 LOG_EMOJIS = {
-    "all": "📋", "message_delete": "🗑️", "message_edit": "✏️", "voice": "🔊",
+    "all": "📋", "message_delete": "🗑️", "message_edit": "✏️", "reaction": "😀", "voice": "🔊",
     "member": "👤", "channel": "📁", "role": "🎖️", "moderation": "🛡️",
     "invite": "📨", "event": "📅", "pins": "📌", "stage": "🎤", "automod": "🤖",
     "audit": "📜", "user": "🆔", "sticker": "🏷️", "integration": "🔗"
@@ -165,10 +166,10 @@ class LogSistemi(commands.Cog):
             channel = self.bot.get_channel(int(channel_id))
         except (TypeError, ValueError):
             return
-        if channel:
+        if channel and isinstance(channel, discord.TextChannel):
             try:
                 await channel.send(embed=embed)
-            except:
+            except (discord.Forbidden, discord.HTTPException):
                 pass
 
     @app_commands.command(name="setlog", description="Log kanallarını ayarla (butonlu menü)")
@@ -213,6 +214,8 @@ class LogSistemi(commands.Cog):
         embed = discord.Embed(title="Log Ayarları", description="Hangi log türünün hangi kanala gittiği aşağıda listelenmiştir.", color=discord.Color.blue())
 
         for key, value in settings.items():
+            if key not in LOG_TYPES or not str(value).isdigit():
+                continue
             log_name = LOG_TYPES.get(key, key)
             channel = interaction.guild.get_channel(int(value))
             channel_mention = channel.mention if channel else "silinmiş-kanal"
@@ -278,9 +281,35 @@ class LogSistemi(commands.Cog):
         embed.set_footer(text=f"ID: {before.author.id} • {before.guild.name}")
         await self._send_log(before.guild.id, "message_edit", embed)
 
+    async def _log_reaction(self, payload: discord.RawReactionActionEvent, action: str):
+        if not payload.guild_id or payload.user_id == self.bot.user.id:
+            return
+        guild = self.bot.get_guild(payload.guild_id)
+        channel = guild.get_channel(payload.channel_id) if guild else None
+        emoji = str(payload.emoji)
+        embed = discord.Embed(
+            title=f"Tepki {action}",
+            description=f"{emoji} tepkisi mesaja {action.lower()}.",
+            color=discord.Color.green() if action == "Eklendi" else discord.Color.red(),
+            timestamp=datetime.now(),
+        )
+        embed.add_field(name="Kullanıcı", value=f"<@{payload.user_id}> (`{payload.user_id}`)", inline=True)
+        embed.add_field(name="Kanal", value=channel.mention if channel else f"`{payload.channel_id}`", inline=True)
+        embed.add_field(name="Mesaj", value=f"[Mesaja git](https://discord.com/channels/{payload.guild_id}/{payload.channel_id}/{payload.message_id})", inline=False)
+        embed.set_footer(text=f"Sunucu ID: {payload.guild_id}")
+        await self._send_log(payload.guild_id, "reaction", embed)
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        await self._log_reaction(payload, "Eklendi")
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+        await self._log_reaction(payload, "Kaldırıldı")
+
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-        if member.bot or not member.guild:
+        if not member.guild:
             return
 
         embed = None
@@ -308,8 +337,6 @@ class LogSistemi(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        if member.bot:
-            return
         previous = self.invite_cache.get(member.guild.id, {})
         invites = await self._refresh_invites(member.guild)
         used_invite = None
@@ -336,9 +363,6 @@ class LogSistemi(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
-        if member.bot:
-            return
-
         try:
             if member.guild.me.guild_permissions.view_audit_log:
                 async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.kick):
@@ -401,13 +425,26 @@ class LogSistemi(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_role_update(self, before: discord.Role, after: discord.Role):
-        if before.name == after.name and before.color == after.color:
+        if (before.name == after.name and before.color == after.color and
+                before.hoist == after.hoist and before.mentionable == after.mentionable and
+                before.permissions == after.permissions):
             return
         embed = discord.Embed(title="Rol Güncellendi", description=f"{after.mention} rolü güncellendi", color=discord.Color.blue(), timestamp=datetime.now())
         if before.name != after.name:
             embed.add_field(name="İsim Değişikliği", value=f"`{before.name}` → `{after.name}`", inline=False)
         if before.color != after.color:
             embed.add_field(name="Renk Değişikliği", value=f"`{before.color}` → `{after.color}`", inline=False)
+        if before.hoist != after.hoist:
+            embed.add_field(name="Ayrı Gösterim", value=f"`{before.hoist}` → `{after.hoist}`", inline=True)
+        if before.mentionable != after.mentionable:
+            embed.add_field(name="Etiketlenebilir", value=f"`{before.mentionable}` → `{after.mentionable}`", inline=True)
+        if before.permissions != after.permissions:
+            added = [name for name, value in after.permissions if value and not getattr(before.permissions, name)]
+            removed = [name for name, value in before.permissions if value and not getattr(after.permissions, name)]
+            if added:
+                embed.add_field(name="Verilen Yetkiler", value=", ".join(added), inline=False)
+            if removed:
+                embed.add_field(name="Alınan Yetkiler", value=", ".join(removed), inline=False)
         embed.set_footer(text=f"ID: {after.id} • {after.guild.name}")
         await self._send_log(after.guild.id, "role", embed)
 
@@ -499,8 +536,6 @@ class LogSistemi(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        if before.bot:
-            return
         embed = None
         if before.nick != after.nick:
             embed = discord.Embed(title="Takma Ad Değişti", color=discord.Color.blue(), timestamp=datetime.now())
@@ -529,6 +564,13 @@ class LogSistemi(commands.Cog):
             embed.add_field(name="Kullanıcı", value=after.mention, inline=True)
             embed.add_field(name="Önce", value=before.global_name or before.name, inline=True)
             embed.add_field(name="Sonra", value=after.global_name or after.name, inline=True)
+            embed.set_footer(text=f"ID: {after.id} • {after.guild.name}")
+        elif before.timed_out_until != after.timed_out_until:
+            embed = discord.Embed(title="Zaman Aşımı Durumu Değişti", color=discord.Color.orange(), timestamp=datetime.now())
+            embed.set_author(name=after.display_name, icon_url=after.avatar.url if after.avatar else None)
+            embed.add_field(name="Kullanıcı", value=after.mention, inline=True)
+            embed.add_field(name="Önce", value=str(before.timed_out_until or "Yok"), inline=False)
+            embed.add_field(name="Sonra", value=str(after.timed_out_until or "Yok"), inline=False)
             embed.set_footer(text=f"ID: {after.id} • {after.guild.name}")
         elif before.roles != after.roles:
             eklenen = [r.mention for r in after.roles if r not in before.roles and r.name != "@everyone"]
@@ -565,11 +607,24 @@ class LogSistemi(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
-        if before.name == after.name:
+        changes = []
+        if before.name != after.name:
+            changes.append(f"İsim: `{before.name}` → `{after.name}`")
+        if getattr(before, "category_id", None) != getattr(after, "category_id", None):
+            changes.append(f"Kategori: `{getattr(before, 'category_id', None)}` → `{getattr(after, 'category_id', None)}`")
+        if getattr(before, "topic", None) != getattr(after, "topic", None):
+            changes.append("Konu değiştirildi")
+        if getattr(before, "slowmode_delay", None) != getattr(after, "slowmode_delay", None):
+            changes.append(f"Yavaş mod: `{getattr(before, 'slowmode_delay', 0)}` → `{getattr(after, 'slowmode_delay', 0)}` sn")
+        if getattr(before, "nsfw", None) != getattr(after, "nsfw", None):
+            changes.append(f"NSFW: `{getattr(before, 'nsfw', False)}` → `{getattr(after, 'nsfw', False)}`")
+        if before.overwrites != after.overwrites:
+            changes.append("Kanal izinleri değiştirildi")
+        if not changes:
             return
         embed = discord.Embed(title="Kanal Düzenlendi", description=f"{after.mention} kanalı düzenlendi", color=discord.Color.blue(), timestamp=datetime.now())
         embed.add_field(name="Kanal", value=after.mention, inline=True)
-        embed.add_field(name="İsim Değişikliği", value=f"`{before.name}` → `{after.name}`", inline=False)
+        embed.add_field(name="Değişiklikler", value="\n".join(changes)[:1024], inline=False)
         embed.set_footer(text=f"ID: {after.id} • {after.guild.name}")
         await self._send_log(after.guild.id, "channel", embed)
 
